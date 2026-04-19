@@ -1,5 +1,6 @@
 package com.connectsphere.comment.service;
 
+import com.connectsphere.comment.client.PostClient;
 import com.connectsphere.comment.dto.*;
 import com.connectsphere.comment.entity.Comment;
 import com.connectsphere.comment.exception.CommentNotFoundException;
@@ -9,8 +10,6 @@ import org.junit.jupiter.api.*;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.*;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.web.client.RestTemplate;
-import org.springframework.test.util.ReflectionTestUtils;
 
 import java.time.LocalDateTime;
 import java.util.List;
@@ -21,46 +20,28 @@ import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
 /**
- * CommentServiceImplTest - Unit tests for Comment Service business logic
- *
- * Uses Mockito to mock CommentRepository and RestTemplate.
- * Tests cover:
- *  - addComment (top-level, reply, reply to deleted parent)
- *  - getCommentsByPost (including deleted placeholder)
- *  - getTopLevelComments
- *  - getCommentById (found, not found)
- *  - getReplies
- *  - updateComment (own, unauthorized)
- *  - deleteComment (author, admin, moderator, unauthorized)
- *  - getCommentsByUser
- *  - likeComment / unlikeComment (found, not found)
- *  - getCommentCount
- *  - post-service notification (success, graceful failure)
+ * CommentServiceImplTest — Fixed Unit Tests for Comment Service
  */
 @ExtendWith(MockitoExtension.class)
 @DisplayName("CommentServiceImpl Unit Tests")
 class CommentServiceImplTest {
 
+    // FIX 1 — PostClient instead of RestTemplate
     @Mock
     private CommentRepository commentRepository;
 
     @Mock
-    private RestTemplate restTemplate;
+    private PostClient postClient;
 
     @InjectMocks
     private CommentServiceImpl commentService;
 
-    // Inject the @Value field via ReflectionTestUtils (since no Spring context)
-    @BeforeEach
-    void setUp() {
-        ReflectionTestUtils.setField(commentService,
-                "postServiceBaseUrl", "http://localhost:8082/api/v1");
-    }
+    // FIX 2 — @BeforeEach removed entirely (postServiceBaseUrl field is gone)
 
-    // ── Test Data ─────────────────────────────────────────────────────────────
+    // ── Test Data Helper ──────────────────────────────────────────────────────
 
     private Comment buildComment(Integer commentId, Integer postId, Integer authorId,
-                                  Integer parentCommentId, boolean isDeleted) {
+                                 Integer parentCommentId, boolean isDeleted) {
         return Comment.builder()
                 .commentId(commentId)
                 .postId(postId)
@@ -72,6 +53,21 @@ class CommentServiceImplTest {
                 .createdAt(LocalDateTime.now())
                 .updatedAt(LocalDateTime.now())
                 .build();
+    }
+
+    /**
+     * FIX 3 helper — builds a valid PostApiResponse so verifyPostExists() passes.
+     * Call this at the start of every addComment test.
+     */
+    private PostApiResponse buildValidPostResponse(Integer postId) {
+        PostResponseDTO post = new PostResponseDTO();
+        post.setPostId(postId);
+        post.setIsDeleted(false);
+
+        PostApiResponse response = new PostApiResponse();
+        response.setSuccess(true);
+        response.setData(post);
+        return response;
     }
 
     // ── addComment ────────────────────────────────────────────────────────────
@@ -86,13 +82,18 @@ class CommentServiceImplTest {
 
             // Given
             Integer authorId = 1;
+            Integer postId   = 10;
+
             AddCommentRequestDTO request = AddCommentRequestDTO.builder()
-                    .postId(10)
+                    .postId(postId)
                     .parentCommentId(null)
                     .content("Great post!")
                     .build();
 
-            Comment saved = buildComment(100, 10, authorId, null, false);
+            // FIX 3 — mock verifyPostExists() so it passes
+            when(postClient.getPostById(postId)).thenReturn(buildValidPostResponse(postId));
+
+            Comment saved = buildComment(100, postId, authorId, null, false);
             saved.setContent("Great post!");
             when(commentRepository.save(any(Comment.class))).thenReturn(saved);
 
@@ -103,15 +104,16 @@ class CommentServiceImplTest {
             // Then
             assertThat(response.isSuccess()).isTrue();
             assertThat(response.getMessage()).isEqualTo("Comment added successfully");
-            assertThat(response.getData().getPostId()).isEqualTo(10);
+            assertThat(response.getData().getPostId()).isEqualTo(postId);
             assertThat(response.getData().getAuthorId()).isEqualTo(authorId);
             assertThat(response.getData().getParentCommentId()).isNull();
             assertThat(response.getData().getContent()).isEqualTo("Great post!");
             assertThat(response.getData().getIsDeleted()).isFalse();
 
+            verify(postClient).getPostById(postId);
             verify(commentRepository).save(any(Comment.class));
-            // Verify post-service increment call was attempted
-            verify(restTemplate).postForEntity(contains("/comments/increment"), any(), eq(String.class));
+            // FIX 4 — verify postClient increment, not restTemplate
+            verify(postClient).incrementCommentCount(postId);
         }
 
         @Test
@@ -119,20 +121,25 @@ class CommentServiceImplTest {
         void addComment_reply_success() {
 
             // Given
-            Integer authorId = 2;
+            Integer authorId        = 2;
+            Integer postId          = 10;
             Integer parentCommentId = 50;
+
             AddCommentRequestDTO request = AddCommentRequestDTO.builder()
-                    .postId(10)
+                    .postId(postId)
                     .parentCommentId(parentCommentId)
                     .content("Nice point!")
                     .build();
 
+            // FIX 3 — mock verifyPostExists()
+            when(postClient.getPostById(postId)).thenReturn(buildValidPostResponse(postId));
+
             // Parent comment exists and is active
-            Comment parentComment = buildComment(parentCommentId, 10, 1, null, false);
+            Comment parentComment = buildComment(parentCommentId, postId, 1, null, false);
             when(commentRepository.findByCommentIdAndIsDeletedFalse(parentCommentId))
                     .thenReturn(Optional.of(parentComment));
 
-            Comment savedReply = buildComment(101, 10, authorId, parentCommentId, false);
+            Comment savedReply = buildComment(101, postId, authorId, parentCommentId, false);
             savedReply.setContent("Nice point!");
             when(commentRepository.save(any(Comment.class))).thenReturn(savedReply);
 
@@ -145,21 +152,27 @@ class CommentServiceImplTest {
             assertThat(response.getData().getParentCommentId()).isEqualTo(parentCommentId);
             assertThat(response.getData().getContent()).isEqualTo("Nice point!");
 
+            verify(postClient).getPostById(postId);
             verify(commentRepository).findByCommentIdAndIsDeletedFalse(parentCommentId);
             verify(commentRepository).save(any(Comment.class));
+            verify(postClient).incrementCommentCount(postId);
         }
 
         @Test
-        @DisplayName("Should throw CommentNotFoundException when replying to deleted parent")
+        @DisplayName("Should throw CommentNotFoundException when replying to a deleted parent")
         void addComment_replyToDeletedParent_throwsException() {
 
             // Given
+            Integer postId = 10;
+
             AddCommentRequestDTO request = AddCommentRequestDTO.builder()
-                    .postId(10)
+                    .postId(postId)
                     .parentCommentId(999)
                     .content("Reply to deleted comment")
                     .build();
 
+            // FIX 3 — post must be valid first; then parent comment lookup fails
+            when(postClient.getPostById(postId)).thenReturn(buildValidPostResponse(postId));
             when(commentRepository.findByCommentIdAndIsDeletedFalse(999))
                     .thenReturn(Optional.empty());
 
@@ -169,31 +182,94 @@ class CommentServiceImplTest {
                     .hasMessageContaining("999");
 
             verify(commentRepository, never()).save(any());
+            verify(postClient, never()).incrementCommentCount(anyInt());
         }
 
         @Test
-        @DisplayName("Should call post-service increment even when RestTemplate fails")
-        void addComment_postServiceDown_commentStillSaved() {
+        @DisplayName("Should still save comment when post-service increment call fails (graceful degradation)")
+        void addComment_postServiceIncrementFails_commentStillSaved() {
 
             // Given
+            Integer postId   = 10;
+            Integer authorId = 1;
+
             AddCommentRequestDTO request = AddCommentRequestDTO.builder()
-                    .postId(10)
+                    .postId(postId)
                     .parentCommentId(null)
                     .content("Comment despite service failure")
                     .build();
 
-            Comment saved = buildComment(102, 10, 1, null, false);
+            // FIX 3 — post must exist first (verifyPostExists passes)
+            when(postClient.getPostById(postId)).thenReturn(buildValidPostResponse(postId));
+
+            Comment saved = buildComment(102, postId, authorId, null, false);
             when(commentRepository.save(any(Comment.class))).thenReturn(saved);
-            // Simulate post-service being down
-            when(restTemplate.postForEntity(anyString(), any(), eq(String.class)))
-                    .thenThrow(new RuntimeException("Connection refused"));
 
-            // When — should NOT throw; graceful degradation
-            ApiResponseDTO<CommentResponseDTO> response = commentService.addComment(1, request);
+            // FIX 5 — simulate the INCREMENT call failing, not the verify call
+            doThrow(new RuntimeException("Connection refused"))
+                    .when(postClient).incrementCommentCount(postId);
 
-            // Then — comment is saved despite post-service failure
+            // When — should NOT throw; CommentServiceImpl catches this gracefully
+            ApiResponseDTO<CommentResponseDTO> response =
+                    commentService.addComment(authorId, request);
+
+            // Then — comment IS saved despite the increment failure
             assertThat(response.isSuccess()).isTrue();
+            assertThat(response.getMessage()).isEqualTo("Comment added successfully");
             verify(commentRepository).save(any(Comment.class));
+            verify(postClient).incrementCommentCount(postId);
+        }
+
+        @Test
+        @DisplayName("Should throw exception when post does not exist in post-service")
+        void addComment_postNotFound_throwsException() {
+
+            // Given — post-service returns null (post doesn't exist)
+            Integer postId = 999;
+
+            AddCommentRequestDTO request = AddCommentRequestDTO.builder()
+                    .postId(postId)
+                    .parentCommentId(null)
+                    .content("Comment on non-existent post")
+                    .build();
+
+            when(postClient.getPostById(postId)).thenReturn(null);
+
+            // When / Then
+            assertThatThrownBy(() -> commentService.addComment(1, request))
+                    .isInstanceOf(Exception.class);
+
+            verify(commentRepository, never()).save(any());
+        }
+
+        @Test
+        @DisplayName("Should throw exception when post is soft-deleted")
+        void addComment_postSoftDeleted_throwsException() {
+
+            // Given — post exists but isDeleted = true
+            Integer postId = 10;
+
+            PostResponseDTO deletedPost = new PostResponseDTO();
+            deletedPost.setPostId(postId);
+            deletedPost.setIsDeleted(true);   // ← soft-deleted
+
+            PostApiResponse response = new PostApiResponse();
+            response.setSuccess(true);
+            response.setData(deletedPost);
+
+            when(postClient.getPostById(postId)).thenReturn(response);
+
+            AddCommentRequestDTO request = AddCommentRequestDTO.builder()
+                    .postId(postId)
+                    .parentCommentId(null)
+                    .content("Comment on deleted post")
+                    .build();
+
+            // When / Then
+            assertThatThrownBy(() -> commentService.addComment(1, request))
+                    .isInstanceOf(Exception.class);
+
+            verify(commentRepository, never()).save(any());
         }
     }
 
@@ -204,11 +280,11 @@ class CommentServiceImplTest {
     class GetCommentsByPostTests {
 
         @Test
-        @DisplayName("Should return all comments including deleted ones with placeholder")
+        @DisplayName("Should return all comments including deleted ones with placeholder content")
         void getCommentsByPost_includesDeletedWithPlaceholder() {
 
             // Given
-            Integer postId = 10;
+            Integer postId  = 10;
             Comment active  = buildComment(1, postId, 1, null, false);
             Comment deleted = buildComment(2, postId, 2, null, true);
             deleted.setContent("Original deleted content");
@@ -224,12 +300,12 @@ class CommentServiceImplTest {
             assertThat(response.isSuccess()).isTrue();
             assertThat(response.getData()).hasSize(2);
 
-            // Active comment has original content
+            // Active comment retains original content
             assertThat(response.getData().get(0).getContent())
                     .isEqualTo("Test comment content");
             assertThat(response.getData().get(0).getIsDeleted()).isFalse();
 
-            // Deleted comment has placeholder content
+            // Deleted comment gets placeholder text — original is hidden
             assertThat(response.getData().get(1).getContent())
                     .isEqualTo("[This comment was deleted]");
             assertThat(response.getData().get(1).getIsDeleted()).isTrue();
@@ -237,7 +313,7 @@ class CommentServiceImplTest {
 
         @Test
         @DisplayName("Should return empty list when post has no comments")
-        void getCommentsByPost_noComments_emptyList() {
+        void getCommentsByPost_noComments_returnsEmptyList() {
 
             // Given
             when(commentRepository.findByPostIdOrderByCreatedAtAsc(99))
@@ -250,6 +326,32 @@ class CommentServiceImplTest {
             // Then
             assertThat(response.isSuccess()).isTrue();
             assertThat(response.getData()).isEmpty();
+        }
+
+        @Test
+        @DisplayName("Should return all comments ordered by createdAt ascending")
+        void getCommentsByPost_orderedByCreatedAt() {
+
+            // Given
+            Integer postId = 10;
+            Comment first  = buildComment(1, postId, 1, null, false);
+            Comment second = buildComment(2, postId, 2, null, false);
+            Comment third  = buildComment(3, postId, 3, null, false);
+
+            when(commentRepository.findByPostIdOrderByCreatedAtAsc(postId))
+                    .thenReturn(List.of(first, second, third));
+
+            // When
+            ApiResponseDTO<List<CommentResponseDTO>> response =
+                    commentService.getCommentsByPost(postId);
+
+            // Then
+            assertThat(response.isSuccess()).isTrue();
+            assertThat(response.getData()).hasSize(3);
+            // IDs in same order as returned by repo (oldest first)
+            assertThat(response.getData().get(0).getCommentId()).isEqualTo(1);
+            assertThat(response.getData().get(1).getCommentId()).isEqualTo(2);
+            assertThat(response.getData().get(2).getCommentId()).isEqualTo(3);
         }
     }
 
@@ -267,8 +369,9 @@ class CommentServiceImplTest {
             Integer postId = 10;
             Comment c1 = buildComment(1, postId, 1, null, false);
             Comment c2 = buildComment(2, postId, 2, null, false);
-            // c3 is a reply — should NOT be in this result
-            when(commentRepository.findTopLevelByPostId(postId)).thenReturn(List.of(c1, c2));
+
+            when(commentRepository.findTopLevelByPostId(postId))
+                    .thenReturn(List.of(c1, c2));
 
             // When
             ApiResponseDTO<List<CommentResponseDTO>> response =
@@ -280,6 +383,22 @@ class CommentServiceImplTest {
             assertThat(response.getData())
                     .allMatch(dto -> dto.getParentCommentId() == null);
         }
+
+        @Test
+        @DisplayName("Should return empty list when post has no top-level comments")
+        void getTopLevelComments_noComments_returnsEmptyList() {
+
+            // Given
+            when(commentRepository.findTopLevelByPostId(99)).thenReturn(List.of());
+
+            // When
+            ApiResponseDTO<List<CommentResponseDTO>> response =
+                    commentService.getTopLevelComments(99);
+
+            // Then
+            assertThat(response.isSuccess()).isTrue();
+            assertThat(response.getData()).isEmpty();
+        }
     }
 
     // ── getCommentById ────────────────────────────────────────────────────────
@@ -289,7 +408,7 @@ class CommentServiceImplTest {
     class GetCommentByIdTests {
 
         @Test
-        @DisplayName("Should return comment when found")
+        @DisplayName("Should return comment successfully when found")
         void getCommentById_found_success() {
 
             // Given
@@ -302,10 +421,12 @@ class CommentServiceImplTest {
             // Then
             assertThat(response.isSuccess()).isTrue();
             assertThat(response.getData().getCommentId()).isEqualTo(1);
+            assertThat(response.getData().getPostId()).isEqualTo(10);
+            assertThat(response.getData().getAuthorId()).isEqualTo(1);
         }
 
         @Test
-        @DisplayName("Should throw CommentNotFoundException when comment not found")
+        @DisplayName("Should throw CommentNotFoundException when comment does not exist")
         void getCommentById_notFound_throwsException() {
 
             // Given
@@ -318,7 +439,7 @@ class CommentServiceImplTest {
         }
 
         @Test
-        @DisplayName("Should return deleted comment with placeholder content")
+        @DisplayName("Should return deleted comment with placeholder content (thread preserved)")
         void getCommentById_deletedComment_returnsPlaceholder() {
 
             // Given
@@ -333,6 +454,8 @@ class CommentServiceImplTest {
             assertThat(response.getData().getContent())
                     .isEqualTo("[This comment was deleted]");
             assertThat(response.getData().getIsDeleted()).isTrue();
+            // CommentId still returned so thread structure is intact
+            assertThat(response.getData().getCommentId()).isEqualTo(5);
         }
     }
 
@@ -368,18 +491,42 @@ class CommentServiceImplTest {
 
         @Test
         @DisplayName("Should return empty list when comment has no replies")
-        void getReplies_noReplies_emptyList() {
+        void getReplies_noReplies_returnsEmptyList() {
 
             // Given
             when(commentRepository.findByParentCommentIdOrderByCreatedAtAsc(99))
                     .thenReturn(List.of());
 
             // When
-            ApiResponseDTO<List<CommentResponseDTO>> response = commentService.getReplies(99);
+            ApiResponseDTO<List<CommentResponseDTO>> response =
+                    commentService.getReplies(99);
 
             // Then
             assertThat(response.isSuccess()).isTrue();
             assertThat(response.getData()).isEmpty();
+        }
+
+        @Test
+        @DisplayName("Should include deleted replies with placeholder content")
+        void getReplies_includesDeletedReplies_withPlaceholder() {
+
+            // Given
+            Integer parentId     = 10;
+            Comment activeReply  = buildComment(20, 1, 2, parentId, false);
+            Comment deletedReply = buildComment(21, 1, 3, parentId, true);
+
+            when(commentRepository.findByParentCommentIdOrderByCreatedAtAsc(parentId))
+                    .thenReturn(List.of(activeReply, deletedReply));
+
+            // When
+            ApiResponseDTO<List<CommentResponseDTO>> response =
+                    commentService.getReplies(parentId);
+
+            // Then
+            assertThat(response.isSuccess()).isTrue();
+            assertThat(response.getData()).hasSize(2);
+            assertThat(response.getData().get(1).getContent())
+                    .isEqualTo("[This comment was deleted]");
         }
     }
 
@@ -395,8 +542,8 @@ class CommentServiceImplTest {
 
             // Given
             Integer commentId = 1;
-            Integer authorId = 10;
-            Comment existing = buildComment(commentId, 5, authorId, null, false);
+            Integer authorId  = 10;
+            Comment existing  = buildComment(commentId, 5, authorId, null, false);
 
             UpdateCommentRequestDTO request = UpdateCommentRequestDTO.builder()
                     .content("Updated content")
@@ -422,20 +569,35 @@ class CommentServiceImplTest {
 
         @Test
         @DisplayName("Should throw UnauthorizedActionException when non-author tries to update")
-        void updateComment_notOwner_throwsException() {
+        void updateComment_notOwner_throwsUnauthorized() {
 
-            // Given
-            Comment comment = buildComment(1, 5, 10, null, false); // owned by userId=10
+            // Given — comment owned by userId=10, attacker is userId=99
+            Comment comment = buildComment(1, 5, 10, null, false);
             when(commentRepository.findByCommentIdAndIsDeletedFalse(1))
                     .thenReturn(Optional.of(comment));
 
-            // When / Then — userId=99 tries to update
+            // When / Then
             assertThatThrownBy(() -> commentService.updateComment(
                     1, 99, UpdateCommentRequestDTO.builder().content("hack").build()))
                     .isInstanceOf(UnauthorizedActionException.class)
                     .hasMessageContaining("not authorized");
 
             verify(commentRepository, never()).save(any());
+        }
+
+        @Test
+        @DisplayName("Should throw CommentNotFoundException when comment not found on update")
+        void updateComment_commentNotFound_throwsException() {
+
+            // Given
+            when(commentRepository.findByCommentIdAndIsDeletedFalse(999))
+                    .thenReturn(Optional.empty());
+
+            // When / Then
+            assertThatThrownBy(() -> commentService.updateComment(
+                    999, 1, UpdateCommentRequestDTO.builder().content("anything").build()))
+                    .isInstanceOf(CommentNotFoundException.class)
+                    .hasMessageContaining("999");
         }
     }
 
@@ -449,7 +611,7 @@ class CommentServiceImplTest {
         @DisplayName("Should soft-delete comment when requester is the author")
         void deleteComment_ownComment_success() {
 
-            // Given
+            // Given — comment is on postId=10, owned by userId=5
             Comment comment = buildComment(1, 10, 5, null, false);
             when(commentRepository.findByCommentIdAndIsDeletedFalse(1))
                     .thenReturn(Optional.of(comment));
@@ -460,33 +622,35 @@ class CommentServiceImplTest {
             // Then
             assertThat(response.isSuccess()).isTrue();
             assertThat(response.getMessage()).isEqualTo("Comment deleted successfully");
+            // FIX 4 — verify softDelete and postClient decrement
             verify(commentRepository).softDeleteByCommentId(1);
-            verify(restTemplate).postForEntity(contains("/comments/decrement"),
-                    any(), eq(String.class));
+            verify(postClient).decrementCommentCount(10);
         }
 
         @Test
-        @DisplayName("Should allow ADMIN to delete any comment")
-        void deleteComment_adminDeletesAny_success() {
+        @DisplayName("Should allow ADMIN to delete any comment regardless of ownership")
+        void deleteComment_adminDeletesAnyComment_success() {
 
             // Given — comment owned by userId=5, admin is userId=99
             Comment comment = buildComment(1, 10, 5, null, false);
             when(commentRepository.findByCommentIdAndIsDeletedFalse(1))
                     .thenReturn(Optional.of(comment));
 
-            // When
+            // When — admin bypasses ownership check
             ApiResponseDTO<String> response = commentService.deleteComment(1, 99, "ADMIN");
 
             // Then
             assertThat(response.isSuccess()).isTrue();
+            assertThat(response.getMessage()).isEqualTo("Comment deleted successfully");
             verify(commentRepository).softDeleteByCommentId(1);
+            verify(postClient).decrementCommentCount(10);
         }
 
         @Test
-        @DisplayName("Should allow MODERATOR to delete any comment")
-        void deleteComment_moderatorDeletesAny_success() {
+        @DisplayName("Should allow MODERATOR to delete any comment regardless of ownership")
+        void deleteComment_moderatorDeletesAnyComment_success() {
 
-            // Given
+            // Given — comment owned by userId=5, moderator is userId=88
             Comment comment = buildComment(1, 10, 5, null, false);
             when(commentRepository.findByCommentIdAndIsDeletedFalse(1))
                     .thenReturn(Optional.of(comment));
@@ -497,13 +661,14 @@ class CommentServiceImplTest {
             // Then
             assertThat(response.isSuccess()).isTrue();
             verify(commentRepository).softDeleteByCommentId(1);
+            verify(postClient).decrementCommentCount(10);
         }
 
         @Test
         @DisplayName("Should throw UnauthorizedActionException when non-author USER tries to delete")
-        void deleteComment_notOwner_throwsException() {
+        void deleteComment_notOwnerUser_throwsUnauthorized() {
 
-            // Given
+            // Given — comment owned by userId=5, attacker is userId=77
             Comment comment = buildComment(1, 10, 5, null, false);
             when(commentRepository.findByCommentIdAndIsDeletedFalse(1))
                     .thenReturn(Optional.of(comment));
@@ -513,11 +678,12 @@ class CommentServiceImplTest {
                     .isInstanceOf(UnauthorizedActionException.class);
 
             verify(commentRepository, never()).softDeleteByCommentId(anyInt());
+            verify(postClient, never()).decrementCommentCount(anyInt());
         }
 
         @Test
         @DisplayName("Should throw CommentNotFoundException when comment not found on delete")
-        void deleteComment_notFound_throwsException() {
+        void deleteComment_commentNotFound_throwsException() {
 
             // Given
             when(commentRepository.findByCommentIdAndIsDeletedFalse(999))
@@ -526,6 +692,29 @@ class CommentServiceImplTest {
             // When / Then
             assertThatThrownBy(() -> commentService.deleteComment(999, 1, "USER"))
                     .isInstanceOf(CommentNotFoundException.class);
+
+            verify(commentRepository, never()).softDeleteByCommentId(anyInt());
+        }
+
+        @Test
+        @DisplayName("Should still soft-delete when post-service decrement call fails (graceful degradation)")
+        void deleteComment_postServiceDecrementFails_commentStillDeleted() {
+
+            // Given
+            Comment comment = buildComment(1, 10, 5, null, false);
+            when(commentRepository.findByCommentIdAndIsDeletedFalse(1))
+                    .thenReturn(Optional.of(comment));
+
+            // Simulate decrement call failing
+            doThrow(new RuntimeException("Connection refused"))
+                    .when(postClient).decrementCommentCount(10);
+
+            // When — should NOT throw; graceful degradation
+            ApiResponseDTO<String> response = commentService.deleteComment(1, 5, "USER");
+
+            // Then — comment IS deleted despite decrement failure
+            assertThat(response.isSuccess()).isTrue();
+            verify(commentRepository).softDeleteByCommentId(1);
         }
     }
 
@@ -553,7 +742,7 @@ class CommentServiceImplTest {
         }
 
         @Test
-        @DisplayName("Should throw CommentNotFoundException on likeComment for missing comment")
+        @DisplayName("Should throw CommentNotFoundException on likeComment when comment not found")
         void likeComment_commentNotFound_throwsException() {
 
             // Given
@@ -562,7 +751,8 @@ class CommentServiceImplTest {
 
             // When / Then
             assertThatThrownBy(() -> commentService.likeComment(999))
-                    .isInstanceOf(CommentNotFoundException.class);
+                    .isInstanceOf(CommentNotFoundException.class)
+                    .hasMessageContaining("999");
 
             verify(commentRepository, never()).incrementLikes(anyInt());
         }
@@ -585,7 +775,7 @@ class CommentServiceImplTest {
         }
 
         @Test
-        @DisplayName("Should throw CommentNotFoundException on unlikeComment for missing comment")
+        @DisplayName("Should throw CommentNotFoundException on unlikeComment when comment not found")
         void unlikeComment_commentNotFound_throwsException() {
 
             // Given
@@ -594,9 +784,25 @@ class CommentServiceImplTest {
 
             // When / Then
             assertThatThrownBy(() -> commentService.unlikeComment(999))
-                    .isInstanceOf(CommentNotFoundException.class);
+                    .isInstanceOf(CommentNotFoundException.class)
+                    .hasMessageContaining("999");
 
             verify(commentRepository, never()).decrementLikes(anyInt());
+        }
+
+        @Test
+        @DisplayName("Should not call incrementLikes on a deleted comment")
+        void likeComment_deletedComment_throwsException() {
+
+            // Given — findByCommentIdAndIsDeletedFalse returns empty for deleted comments
+            when(commentRepository.findByCommentIdAndIsDeletedFalse(5))
+                    .thenReturn(Optional.empty());
+
+            // When / Then
+            assertThatThrownBy(() -> commentService.likeComment(5))
+                    .isInstanceOf(CommentNotFoundException.class);
+
+            verify(commentRepository, never()).incrementLikes(anyInt());
         }
     }
 
@@ -607,8 +813,8 @@ class CommentServiceImplTest {
     class GetCommentCountTests {
 
         @Test
-        @DisplayName("Should return correct comment count for a post")
-        void getCommentCount_returnsCount() {
+        @DisplayName("Should return correct active comment count for a post")
+        void getCommentCount_returnsCorrectCount() {
 
             // Given
             when(commentRepository.countByPostIdAndIsDeletedFalse(10)).thenReturn(7);
@@ -623,7 +829,7 @@ class CommentServiceImplTest {
         }
 
         @Test
-        @DisplayName("Should return zero when post has no comments")
+        @DisplayName("Should return zero when post has no active comments")
         void getCommentCount_noComments_returnsZero() {
 
             // Given
@@ -636,6 +842,22 @@ class CommentServiceImplTest {
             assertThat(response.isSuccess()).isTrue();
             assertThat(response.getData()).isZero();
         }
+
+        @Test
+        @DisplayName("Should count only non-deleted comments (soft-deleted excluded)")
+        void getCommentCount_onlyCountsActiveComments() {
+
+            // Given — post has 10 total comments but only 6 are active
+            when(commentRepository.countByPostIdAndIsDeletedFalse(10)).thenReturn(6);
+
+            // When
+            ApiResponseDTO<Integer> response = commentService.getCommentCount(10);
+
+            // Then
+            assertThat(response.getData()).isEqualTo(6);
+            // Verifies the correct method (isDeletedFalse variant) was called
+            verify(commentRepository).countByPostIdAndIsDeletedFalse(10);
+        }
     }
 
     // ── getCommentsByUser ─────────────────────────────────────────────────────
@@ -646,13 +868,13 @@ class CommentServiceImplTest {
 
         @Test
         @DisplayName("Should return all active comments by a user")
-        void getCommentsByUser_returnsList() {
+        void getCommentsByUser_returnsUserComments() {
 
             // Given
             Integer authorId = 5;
             List<Comment> comments = List.of(
                     buildComment(1, 10, authorId, null, false),
-                    buildComment(2, 20, authorId, 1, false)
+                    buildComment(2, 20, authorId, 1,    false)
             );
             when(commentRepository.findByAuthorIdAndIsDeletedFalseOrderByCreatedAtDesc(authorId))
                     .thenReturn(comments);
@@ -670,7 +892,7 @@ class CommentServiceImplTest {
 
         @Test
         @DisplayName("Should return empty list when user has made no comments")
-        void getCommentsByUser_noComments_emptyList() {
+        void getCommentsByUser_noComments_returnsEmptyList() {
 
             // Given
             when(commentRepository.findByAuthorIdAndIsDeletedFalseOrderByCreatedAtDesc(99))
@@ -683,6 +905,25 @@ class CommentServiceImplTest {
             // Then
             assertThat(response.isSuccess()).isTrue();
             assertThat(response.getData()).isEmpty();
+        }
+
+        @Test
+        @DisplayName("Should not include soft-deleted comments in user comment list")
+        void getCommentsByUser_doesNotIncludeDeletedComments() {
+
+            // Given — repository method already filters deleted ones out
+            Integer authorId = 5;
+            // Only 1 active comment returned (deleted ones filtered by repo query)
+            when(commentRepository.findByAuthorIdAndIsDeletedFalseOrderByCreatedAtDesc(authorId))
+                    .thenReturn(List.of(buildComment(1, 10, authorId, null, false)));
+
+            // When
+            ApiResponseDTO<List<CommentResponseDTO>> response =
+                    commentService.getCommentsByUser(authorId);
+
+            // Then
+            assertThat(response.getData()).hasSize(1);
+            assertThat(response.getData().get(0).getIsDeleted()).isFalse();
         }
     }
 }
