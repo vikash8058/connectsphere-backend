@@ -2,6 +2,7 @@ package com.connectsphere.post.repository;
 
 import com.connectsphere.post.entity.Post;
 import com.connectsphere.post.entity.Visibility;
+import jakarta.transaction.Transactional;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
@@ -93,6 +94,7 @@ public interface PostRepository extends JpaRepository<Post, Integer> {
      * Uses UPDATE query to avoid loading the full entity.
      */
     @Modifying
+    @Transactional
     @Query("UPDATE Post p SET p.likesCount = p.likesCount + 1 WHERE p.postId = :postId AND p.isDeleted = false")
     void incrementLikes(@Param("postId") Integer postId);
 
@@ -101,6 +103,7 @@ public interface PostRepository extends JpaRepository<Post, Integer> {
      * Called by like-service after a successful unlike operation.
      */
     @Modifying
+    @Transactional
     @Query("UPDATE Post p SET p.likesCount = GREATEST(p.likesCount - 1, 0) WHERE p.postId = :postId AND p.isDeleted = false")
     void decrementLikes(@Param("postId") Integer postId);
 
@@ -109,6 +112,7 @@ public interface PostRepository extends JpaRepository<Post, Integer> {
      * Called by comment-service after addComment().
      */
     @Modifying
+    @Transactional
     @Query("UPDATE Post p SET p.commentsCount = p.commentsCount + 1 WHERE p.postId = :postId AND p.isDeleted = false")
     void incrementComments(@Param("postId") Integer postId);
 
@@ -117,6 +121,7 @@ public interface PostRepository extends JpaRepository<Post, Integer> {
      * Called by comment-service after deleteComment().
      */
     @Modifying
+    @Transactional
     @Query("UPDATE Post p SET p.commentsCount = GREATEST(p.commentsCount - 1, 0) WHERE p.postId = :postId AND p.isDeleted = false")
     void decrementComments(@Param("postId") Integer postId);
 
@@ -125,6 +130,7 @@ public interface PostRepository extends JpaRepository<Post, Integer> {
      * Called when another user shares/reposts this post.
      */
     @Modifying
+    @Transactional
     @Query("UPDATE Post p SET p.sharesCount = p.sharesCount + 1 WHERE p.postId = :postId AND p.isDeleted = false")
     void incrementShares(@Param("postId") Integer postId);
 
@@ -133,6 +139,7 @@ public interface PostRepository extends JpaRepository<Post, Integer> {
      * Post record is preserved for 30-day audit trail (NFR).
      */
     @Modifying
+    @Transactional
     @Query("UPDATE Post p SET p.isDeleted = true WHERE p.postId = :postId")
     void softDeleteByPostId(@Param("postId") Integer postId);
 
@@ -141,6 +148,7 @@ public interface PostRepository extends JpaRepository<Post, Integer> {
      * Called by the PATCH /posts/{postId}/visibility endpoint.
      */
     @Modifying
+    @Transactional
     @Query("UPDATE Post p SET p.visibility = :visibility WHERE p.postId = :postId AND p.isDeleted = false")
     void updateVisibility(@Param("postId") Integer postId,
                           @Param("visibility") Visibility visibility);
