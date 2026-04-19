@@ -1,0 +1,106 @@
+spring:
+  application:
+    name: auth-service   # Name of the microservice (used in Eureka & logs)
+
+  config:
+    import: optional:configserver:http://localhost:8888   # Fetch config from Config Server (optional)
+
+  datasource:
+    url: jdbc:mysql://localhost:3306/connectsphere_auth?createDatabaseIfNotExist=true&useSSL=false&serverTimezone=Asia/Kolkata   # MySQL DB connection URL
+    username: ${DB_USERNAME}   # Database username (from environment variable)
+    password: ${DB_PASSWORD}   # Database password (from environment variable)
+    driver-class-name: com.mysql.cj.jdbc.Driver   # MySQL driver class
+  
+  security:
+    oauth2:
+      client:
+        registration:
+          google:
+            client-id: ${GOOGLE_CLIENT_ID}
+            client-secret: ${GOOGLE_CLIENT_SECRET}
+            scope:
+              - email
+              - profile
+
+          github:
+            client-id: ${GITHUB_CLIENT_ID}
+            client-secret: ${GITHUB_CLIENT_SECRET}
+            scope:
+              - user:email
+
+    hikari:
+      maximum-pool-size: 10   # Maximum DB connections in pool
+      minimum-idle: 5         # Minimum idle connections
+      connection-timeout: 20000   # Max wait time (ms) for connection
+
+  jpa:
+    hibernate:
+      ddl-auto: update   # Automatically update DB schema
+    show-sql: true       # Show SQL queries in console
+    properties:
+      hibernate:
+        format_sql: true   # Format SQL queries for readability
+
+  mail:
+    host: ${MAIL_HOST}         # SMTP host (e.g., smtp.gmail.com)
+    port: ${MAIL_PORT}         # SMTP port (e.g., 587)
+    username: ${MAIL_USERNAME} # Email username
+    password: ${MAIL_PASSWORD} # Email password
+
+    properties:
+      mail:
+        smtp:
+          auth: true           # Enable authentication
+          starttls:
+            enable: true       # Enable TLS encryption
+
+server:
+  port: 8081   # Application portk
+  servlet:
+    context-path: /api/v1   # Base URL path for all APIs
+
+eureka:
+  client:
+    service-url:
+      defaultZone: http://localhost:8761/eureka/   # Eureka server URL
+    fetch-registry: true       # Fetch services from Eureka
+    register-with-eureka: true # Register this service in Eureka
+
+  instance:
+    prefer-ip-address: true   # Use IP instead of hostname
+    instance-id: ${spring.application.name}:${server.port}   # Unique instance ID
+
+jwt:
+  secret: ${JWT_SECRET}                 # Secret key for signing JWT
+  expiration: ${JWT_EXPIRATION}         # Access token expiry time
+  refresh-expiration: ${JWT_REFRESH_EXPIRATION} # Refresh token expiry time
+
+otp:
+  expiry-minutes: 10   # OTP validity time in minutes
+  length: 6            # Length of OTP
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics   # Expose actuator endpoints
+
+  endpoint:
+    health:
+      show-details: always   # Show full health details
+
+logging:
+  level:
+    com.connectsphere.auth: DEBUG   # Debug logs for your package
+    org.springframework.security: INFO   # Security logs level
+    org.hibernate.SQL: DEBUG        # Show SQL queries
+
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"   # Log format
+
+springdoc:
+  api-docs:
+    path: /api-docs   # OpenAPI docs endpoint
+
+  swagger-ui:
+    path: /swagger-ui.html   # Swagger UI path
