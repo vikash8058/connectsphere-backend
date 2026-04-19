@@ -40,20 +40,28 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             throws ServletException, IOException {
         try {
             String token = extractToken(request);
-            if (StringUtils.hasText(token)
-            		&& jwtTokenProvider.validateToken(token)
-            		&& !blacklistedTokenRepository.existsByToken(token)) {
-            	
-                String email = jwtTokenProvider.getEmailFromToken(token);
-                String role  = jwtTokenProvider.getRoleFromToken(token);
+            if (StringUtils.hasText(token)) {
 
-                UsernamePasswordAuthenticationToken auth =
-                        new UsernamePasswordAuthenticationToken(
-                                email, null,
-                                List.of(new SimpleGrantedAuthority("ROLE_" + role))
-                        );
-                SecurityContextHolder.getContext().setAuthentication(auth);
-                log.debug("JWT auth set for user: {}", email);
+                // Check if the token is blacklisted (e.g., after logout)
+                if (blacklistedTokenRepository.existsByToken(token)) {
+                    log.warn("Blacklisted token used — rejecting request");
+                    sendUnauthorizedResponse(response, "Token has been invalidated. Please login again.");
+                    return; // ← STOP the filter chain, don't proceed
+                }
+
+                // Validate the token and set authentication context
+                if (jwtTokenProvider.validateToken(token)) {
+                    String email = jwtTokenProvider.getEmailFromToken(token);
+                    String role = jwtTokenProvider.getRoleFromToken(token);
+
+                    UsernamePasswordAuthenticationToken auth =
+                            new UsernamePasswordAuthenticationToken(
+                                    email, null,
+                                    List.of(new SimpleGrantedAuthority("ROLE_" + role))
+                            );
+                    SecurityContextHolder.getContext().setAuthentication(auth);
+                    log.debug("JWT auth set for user: {}", email);
+                }
             }
         } catch (Exception e) {
             log.error("JWT filter error: {}", e.getMessage());
@@ -61,11 +69,23 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         filterChain.doFilter(request, response);
     }
 
+    // Helper method to extract Bearer token from Authorization header
     private String extractToken(HttpServletRequest request) {
         String header = request.getHeader("Authorization");
         if (StringUtils.hasText(header) && header.startsWith("Bearer ")) {
             return header.substring(7);
         }
         return null;
+    }
+
+    // Helper method to send a consistent JSON response for unauthorized access
+    private void sendUnauthorizedResponse(HttpServletResponse response,
+                                          String message) throws IOException {
+        response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
+        response.setContentType("application/json");
+        response.setCharacterEncoding("UTF-8");
+        response.getWriter().write(
+                "{\"success\": false, \"message\": \"" + message + "\"}"
+        );
     }
 }
