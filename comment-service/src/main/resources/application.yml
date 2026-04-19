@@ -1,0 +1,76 @@
+spring:
+  application:
+    name: comment-service
+
+  config:
+    import: optional:configserver:http://localhost:8888
+
+  datasource:
+    url: jdbc:mysql://localhost:3306/connectsphere_comment?createDatabaseIfNotExist=true&useSSL=false&serverTimezone=Asia/Kolkata
+    username: ${DB_USERNAME}
+    password: ${DB_PASSWORD}
+    driver-class-name: com.mysql.cj.jdbc.Driver
+
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: true
+    properties:
+      hibernate:
+        format_sql: true
+
+server:
+  port: 8083
+  servlet:
+    context-path: /api/v1
+
+eureka:
+  client:
+    service-url:
+      defaultZone: http://localhost:8761/eureka/
+    fetch-registry: true
+    register-with-eureka: true
+  instance:
+    prefer-ip-address: true
+    instance-id: ${spring.application.name}:${server.port}
+
+jwt:
+  secret: ${JWT_SECRET}
+
+# post-service base URL — used by PostClient FeignClient
+post-service:
+  base-url: http://localhost:8082/api/v1
+
+# ── ADDED: Feign client configuration ──
+feign:
+  client:
+    config:
+      post-service:
+        connectTimeout: 3000    # 3 seconds to establish connection
+        readTimeout: 5000       # 5 seconds to wait for response
+        loggerLevel: BASIC      # logs method, URL, status code, time taken
+
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics
+  endpoint:
+    health:
+      show-details: always
+
+logging:
+  level:
+    com.connectsphere.comment: DEBUG
+    org.springframework.security: INFO
+    org.hibernate.SQL: DEBUG
+    com.connectsphere.comment.client: DEBUG   # ← ADDED: logs FeignClient calls
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"
+
+springdoc:
+  api-docs:
+    path: /api-docs
+  swagger-ui:
+    path: /swagger-ui.html
