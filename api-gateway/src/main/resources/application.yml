@@ -1,0 +1,173 @@
+spring:
+  application:
+    name: api-gateway
+
+  config:
+    import: optional:configserver:http://localhost:8888   # Fetch from Config Server
+
+  cloud:
+    gateway:
+      # Enable service discovery routing via Eureka
+      discovery:
+        locator:
+          enabled: true
+          lower-case-service-id: true   # lb://auth-service
+
+      # ROUTES
+      routes:
+
+        # ── AUTH SERVICE (PUBLIC) ──
+        - id: auth-service-public
+          uri: lb://auth-service
+          predicates:
+            - Path=/api/v1/auth/register,
+                   /api/v1/auth/login,
+                   /api/v1/auth/verify-otp,
+                   /api/v1/auth/refresh,
+                   /api/v1/auth/forgot-password,
+                   /api/v1/auth/reset-password,
+                   /api/v1/auth/oauth2/**,
+                   /api/v1/oauth2/**,
+                   /api/v1/login/oauth2/**
+
+        # ── AUTH SERVICE (PROTECTED) ───
+        - id: auth-service-protected
+          uri: lb://auth-service
+          predicates:
+            - Path=/api/v1/auth/**
+          filters:
+            - JwtAuthenticationFilter
+
+        # ── POST SERVICE ────
+        - id: post-service-public
+          uri: lb://post-service
+          predicates:
+            - Path=/api/v1/posts/public/**,
+                   /api/v1/posts/search
+
+        - id: post-service-protected
+          uri: lb://post-service
+          predicates:
+            - Path=/api/v1/posts/**
+          filters:
+            - JwtAuthenticationFilter
+
+        # ── COMMENT SERVICE ────
+        - id: comment-service
+          uri: lb://comment-service
+          predicates:
+            - Path=/api/v1/comments/**
+          filters:
+            - JwtAuthenticationFilter
+
+        # ── LIKE SERVICE ────
+        - id: like-service
+          uri: lb://like-service
+          predicates:
+            - Path=/api/v1/likes/**
+          filters:
+            - JwtAuthenticationFilter
+
+        # ── FOLLOW SERVICE ─────
+        - id: follow-service
+          uri: lb://follow-service
+          predicates:
+            - Path=/api/v1/follows/**
+          filters:
+            - JwtAuthenticationFilter
+
+        # ── NOTIFICATION SERVICE ───
+        - id: notification-service
+          uri: lb://notification-service
+          predicates:
+            - Path=/api/v1/notifications/**
+          filters:
+            - JwtAuthenticationFilter
+
+        # ── MEDIA / STORY SERVICE ──
+        - id: media-service-public
+          uri: lb://media-service
+          predicates:
+            - Path=/api/v1/stories/public/**
+
+        - id: media-service-protected
+          uri: lb://media-service
+          predicates:
+            - Path=/api/v1/media/**,
+                   /api/v1/stories/**
+          filters:
+            - JwtAuthenticationFilter
+
+        # ── SEARCH / HASHTAG SERVICE ───
+        - id: search-service
+          uri: lb://search-service
+          predicates:
+            - Path=/api/v1/search/**,
+                   /api/v1/hashtags/**
+
+   
+      # GLOBAL CORS
+   
+      globalcors:
+        cors-configurations:
+          '[/**]':
+            allowedOrigins:
+              - "http://localhost:3000"
+              - "http://localhost:8090"
+              - "http://localhost:5173"
+
+            allowedMethods:
+              - GET
+              - POST
+              - PUT
+              - DELETE
+              - OPTIONS
+
+            allowedHeaders: "*"
+            allowCredentials: true
+
+
+# SERVER
+
+server:
+  port: 8080
+
+# EUREKA
+eureka:
+  client:
+    service-url:
+      defaultZone: http://localhost:8761/eureka/
+    fetch-registry: true
+    register-with-eureka: true
+
+  instance:
+    prefer-ip-address: true
+    instance-id: ${spring.application.name}:${server.port}
+
+
+# JWT (MUST MATCH AUTH SERVICE)
+
+jwt:
+  secret: ${JWT_SECRET}
+
+# ACTUATOR
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,gateway
+  endpoint:
+    health:
+      show-details: always
+
+
+# LOGGING
+
+logging:
+  level:
+    com.connectsphere.gateway: DEBUG
+    org.springframework.cloud.gateway: INFO
+
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"
