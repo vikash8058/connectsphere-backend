@@ -422,12 +422,3 @@ content — required, 1 to 1000 characters
 | auth-service | 8081 | Issues JWT tokens that comment-service validates |
 | post-service | 8082 | comment-service calls it to verify posts and update counters |
 | like-service | 8084 | In full implementation, like-service handles comment likes too |
-
----
-
-## ConnectSphere Case Study Reference
-
-- Section 2.3 — Registered User Requirements (comment on posts, reply to comments, like comments, edit/delete own comments)
-- Section 4.3 — Comment-Service Class Diagram
-- Section 5 — Microservices Architecture Overview
-- Section 6 — NFR: soft-delete 30-day retention, graceful degradation on partial failure
