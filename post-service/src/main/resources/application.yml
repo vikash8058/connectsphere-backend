@@ -1,0 +1,71 @@
+spring:
+  application:
+    name: post-service   # Microservice name registered in Eureka & used in logs
+
+  config:
+    import: optional:configserver:http://localhost:8888   # Fetch from Config Server (optional in dev)
+
+  mvc:
+    dispatch-options-request: true
+
+  web:
+    mvc:
+      hiddenmethod:
+        filter:
+          enabled: true
+
+  datasource:
+    url: jdbc:mysql://localhost:3306/connectsphere_post?createDatabaseIfNotExist=true&useSSL=false&serverTimezone=Asia/Kolkata
+    username: ${DB_USERNAME}   # Database username (from env variable)
+    password: ${DB_PASSWORD}   # Database password (from env variable)
+    driver-class-name: com.mysql.cj.jdbc.Driver
+
+  jpa:
+    hibernate:
+      ddl-auto: update   # Auto-update DB schema on startup
+    show-sql: true       # Show SQL queries in console
+    properties:
+      hibernate:
+        format_sql: true   # Format SQL for readability
+
+server:
+  port: 8082   # Post-service runs on port 8082
+  servlet:
+    context-path: /api/v1   # All endpoints prefixed with /api/v1
+
+eureka:
+  client:
+    service-url:
+      defaultZone: http://localhost:8761/eureka/   # Eureka server URL
+    fetch-registry: true
+    register-with-eureka: true
+  instance:
+    prefer-ip-address: true
+    instance-id: ${spring.application.name}:${server.port}
+
+# JWT secret must match auth-service exactly - used to validate tokens
+jwt:
+  secret: ${JWT_SECRET}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics
+  endpoint:
+    health:
+      show-details: always
+
+logging:
+  level:
+    com.connectsphere.post: DEBUG
+    org.springframework.security: INFO
+    org.hibernate.SQL: DEBUG
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"
+
+springdoc:
+  api-docs:
+    path: /api-docs
+  swagger-ui:
+    path: /swagger-ui.html
