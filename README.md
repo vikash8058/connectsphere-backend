@@ -1,126 +1,211 @@
-# post-service — ConnectSphere
+# comment-service — ConnectSphere
 
-**Microservice:** `post-service`  
-**Port:** `8082`  
-**Base URL:** `http://localhost:8082/api/v1`  
-**Database:** `connectsphere_post` (MySQL)  
+**Microservice:** `comment-service`  
+**Port:** `8083`  
+**Base URL:** `http://localhost:8083/api/v1`  
+**Database:** `connectsphere_comment` (MySQL)  
 **Part of:** ConnectSphere Social Media Mini Platform
 
 ---
 
 ## What This Service Does
 
-The post-service manages the complete lifecycle of user posts on ConnectSphere.  
+The comment-service handles all threaded discussions on posts in ConnectSphere.  
 It is one of eight independent microservices in the platform.
 
 Responsibilities:
-- Create, edit, soft-delete posts (text or media)
-- Enforce visibility rules: PUBLIC, FOLLOWERS_ONLY, PRIVATE
-- Serve the personalised news feed from followed users
-- Guest browsing of public posts (no login needed)
-- Full-text keyword search across public posts
-- Maintain denormalised counters: likes, comments, shares (incremented by other services)
-- Change post visibility after creation
-- Provide post count for user profile badge
+- Add top-level comments on posts
+- Add replies to existing comments (two-level threading)
+- Edit and soft-delete comments (author or admin only)
+- Like and unlike comments (atomic counter updates)
+- Get all comments for a post, or only top-level ones
+- Get replies for a specific comment
+- Get all comments written by a user
+- Get comment count for post badge display
+- Verify post existence before allowing a comment (via FeignClient to post-service)
+- Notify post-service to increment/decrement `commentsCount` after add/delete
 
 ---
 
 ## Architecture — 5-Layer Structure
 
 ```
-PostResource (Controller)          ← REST API layer, reads userId from JWT
-    ↓
-PostService (Interface)            ← Business contract
-    ↓
-PostServiceImpl (Implementation)   ← All business logic lives here
-    ↓
-PostRepository (JPA Interface)     ← Custom JPQL queries
-    ↓
-MySQL DB (connectsphere_post)      ← posts + post_media_urls tables
+CommentResource (Controller)       <- REST API layer, reads userId from JWT
+    |
+CommentService (Interface)         <- Business contract
+    |
+CommentServiceImpl (Implementation)<- All business logic lives here
+    |
+CommentRepository (JPA Interface)  <- Custom JPQL queries
+    |
+MySQL DB (connectsphere_comment)   <- comments table
 ```
 
-Cross-cutting: `LoggingAspect` (AOP) logs entry, exit, exceptions, and execution time
-across all three layers automatically.
+Cross-cutting:
+- `JwtAuthenticationFilter` — validates JWT, stores userId + role in request attributes
+- `PostClient` (FeignClient) — calls post-service to verify posts and update counters
+- `GlobalExceptionHandler` — converts all exceptions to consistent JSON responses
+
+---
+
+## How This Service Differs From post-service
+
+The comment-service introduces one new concept that post-service does not have:
+**inter-service communication via FeignClient.**
+
+Before saving any comment, this service calls post-service to:
+1. Verify the post actually exists (`GET /posts/{postId}`)
+2. Block comments on soft-deleted posts
+3. Increment `commentsCount` on the post after a comment is added
+4. Decrement `commentsCount` on the post after a comment is deleted
+
+This keeps the post's `commentsCount` always in sync without doing expensive
+`COUNT(*)` queries across databases.
+
+---
+
+## Two-Level Threading Model
+
+```
+Post
+ |-- Comment A  (parentCommentId = null)       <- top-level comment
+ |    |-- Reply 1  (parentCommentId = A)       <- reply to Comment A
+ |    |-- Reply 2  (parentCommentId = A)       <- reply to Comment A
+ |-- Comment B  (parentCommentId = null)       <- top-level comment
+      |-- Reply 3  (parentCommentId = B)       <- reply to Comment B
+```
+
+Only two levels are supported as per the ConnectSphere case study (section 4.3).
+You cannot reply to a reply — `parentCommentId` always points to a top-level comment.
+
+---
+
+## Soft-Delete Behaviour
+
+When a comment is deleted, `isDeleted` is set to `true` — the record stays in the DB.
+
+In API responses, the `toDTO()` method replaces the content of deleted comments:
+```
+"content": "[This comment was deleted]"
+```
+
+This preserves thread structure — if Comment A has replies and is deleted,
+the replies still show under it. The thread is not broken.
 
 ---
 
 ## Project Structure
 
 ```
-post-service/
-├── src/main/java/com/connectsphere/post/
-│   ├── PostServiceApplication.java        ← Spring Boot entry point
-│   ├── aop/
-│   │   └── LoggingAspect.java             ← AOP logging (entry, exit, timing, exceptions)
-│   ├── config/
-│   │   ├── ApplicationConfig.java         ← App-level beans placeholder
-│   │   └── SecurityConfig.java            ← Spring Security — defines public vs protected endpoints
-│   ├── controller/
-│   │   └── PostResource.java              ← All REST endpoints
-│   ├── dto/
-│   │   ├── ApiResponseDTO.java            ← Generic response wrapper {success, message, data, timestamp}
-│   │   ├── CreatePostRequestDTO.java      ← Request body for POST /posts
-│   │   ├── UpdatePostRequestDTO.java      ← Request body for PUT /posts/{id}
-│   │   └── PostResponseDTO.java           ← What every post endpoint returns
-│   ├── entity/
-│   │   ├── Post.java                      ← JPA entity mapped to 'posts' table
-│   │   ├── PostType.java                  ← Enum: TEXT / IMAGE / VIDEO
-│   │   └── Visibility.java                ← Enum: PUBLIC / FOLLOWERS_ONLY / PRIVATE
-│   ├── exception/
-│   │   ├── GlobalExceptionHandler.java    ← Converts exceptions to proper HTTP responses
-│   │   ├── PostNotFoundException.java     ← Thrown when post not found / soft-deleted
-│   │   └── UnauthorizedActionException.java ← Thrown when user tries to edit someone else's post
-│   ├── repository/
-│   │   └── PostRepository.java            ← JPA queries (feed, search, counters, soft-delete)
-│   ├── security/
-│   │   └── JwtAuthenticationFilter.java   ← Validates JWT from auth-service; sets userId in request
-│   └── service/
-│       ├── PostService.java               ← Interface (business contract)
-│       └── PostServiceImpl.java           ← Full implementation
-├── src/main/resources/
-│   └── application.yml                    ← Port, DB URL, JWT secret, Eureka config
-└── pom.xml                                ← Dependencies
+comment-service/
+|-- src/main/java/com/connectsphere/comment/
+|   |-- CommentServiceApplication.java         <- Spring Boot entry point
+|   |-- aop/
+|   |   |-- LoggingAspect.java                 <- AOP logging (entry, exit, timing, exceptions)
+|   |-- client/
+|   |   |-- PostClient.java                    <- FeignClient — calls post-service REST APIs
+|   |-- config/
+|   |   |-- ApplicationConfig.java             <- RestTemplate bean
+|   |   |-- SecurityConfig.java                <- Public vs protected endpoint rules
+|   |-- controller/
+|   |   |-- CommentResource.java               <- All REST endpoints
+|   |-- dto/
+|   |   |-- ApiResponseDTO.java                <- Generic wrapper {success, message, data, timestamp}
+|   |   |-- AddCommentRequestDTO.java          <- Request body for POST /comments
+|   |   |-- UpdateCommentRequestDTO.java       <- Request body for PUT /comments/{id}
+|   |   |-- CommentResponseDTO.java            <- Returned by all comment endpoints
+|   |   |-- PostResponseDTO.java               <- Used to deserialize post-service response
+|   |-- entity/
+|   |   |-- Comment.java                       <- JPA entity mapped to 'comments' table
+|   |-- exception/
+|   |   |-- GlobalExceptionHandler.java        <- Central error handler
+|   |   |-- CommentNotFoundException.java      <- Comment not found / soft-deleted
+|   |   |-- PostNotFoundException.java         <- Post not found in post-service
+|   |   |-- PostServiceUnavailableException.java <- post-service is down (503)
+|   |   |-- UnauthorizedActionException.java   <- User modifying someone else's comment
+|   |-- repository/
+|   |   |-- CommentRepository.java             <- All DB queries
+|   |-- security/
+|   |   |-- JwtAuthenticationFilter.java       <- JWT validation, sets userId in request
+|   |-- service/
+|       |-- CommentService.java                <- Interface (business contract)
+|       |-- CommentServiceImpl.java            <- Full implementation
+|-- src/main/resources/
+|   |-- application.yml                        <- Port, DB, JWT, Feign, Eureka config
+|-- pom.xml                                    <- Dependencies
 ```
 
 ---
 
 ## Database
 
-**Database name:** `connectsphere_post`  
+**Database name:** `connectsphere_comment`  
 Created automatically on first startup (`createDatabaseIfNotExist=true`).
 
-### Tables Created by Hibernate
-
-**`posts` table**
+### `comments` Table
 
 | Column | Type | Notes |
 |---|---|---|
-| post_id | INT PK AUTO_INCREMENT | Primary key |
+| comment_id | INT PK AUTO_INCREMENT | Primary key |
+| post_id | INT NOT NULL | Cross-service ref to posts.post_id in post-service |
 | author_id | INT NOT NULL | Cross-service ref to users.user_id in auth-service |
-| content | TEXT NOT NULL | Post body (max 2000 chars) |
-| post_type | VARCHAR(10) | TEXT / IMAGE / VIDEO |
-| visibility | VARCHAR(20) | PUBLIC / FOLLOWERS_ONLY / PRIVATE |
-| likes_count | INT DEFAULT 0 | Denormalised counter |
-| comments_count | INT DEFAULT 0 | Denormalised counter |
-| shares_count | INT DEFAULT 0 | Denormalised counter |
+| parent_comment_id | INT NULL | null = top-level, value = reply to this commentId |
+| content | TEXT NOT NULL | Text body of the comment |
+| likes_count | INT DEFAULT 0 | Denormalised like counter |
 | is_deleted | BOOLEAN DEFAULT false | Soft-delete flag |
 | created_at | DATETIME | Auto-set on INSERT |
 | updated_at | DATETIME | Auto-updated on UPDATE |
 
-**`post_media_urls` table** (child of posts)
+**Indexes:** `idx_post_id`, `idx_author_id`, `idx_parent_comment_id`, `idx_is_deleted`
 
-| Column | Type | Notes |
+> There are **no foreign keys** to other services' databases. `post_id` and `author_id`
+> are plain integer columns. Cross-service integrity is enforced via FeignClient calls
+> at the application layer, not at the DB layer.
+
+---
+
+## FeignClient — PostClient
+
+`PostClient.java` is the inter-service communication layer.
+It replaces `RestTemplate` with the cleaner OpenFeign declarative approach.
+
+```java
+@FeignClient(name = "post-service", url = "${post-service.base-url}")
+public interface PostClient {
+
+    @GetMapping("/posts/{postId}")
+    PostResponseDTO getPostById(@PathVariable Integer postId);
+
+    @PostMapping("/posts/{postId}/comments/increment")
+    void incrementCommentCount(@PathVariable Integer postId);
+
+    @PostMapping("/posts/{postId}/comments/decrement")
+    void decrementCommentCount(@PathVariable Integer postId);
+}
+```
+
+**Why `PostResponseDTO` directly (not `ApiResponseDTO<PostResponseDTO>`)?**
+
+Feign uses Jackson to deserialize. Java's generic type erasure means Feign cannot
+resolve `ApiResponseDTO<PostResponseDTO>` at runtime — it would deserialize the `data`
+field as `LinkedHashMap` instead of `PostResponseDTO`. Returning the concrete type
+directly solves this completely.
+
+**Failure handling:**
+
+| Scenario | Exception Thrown | HTTP Response |
 |---|---|---|
-| post_id | INT FK | References posts.post_id |
-| media_url | VARCHAR(500) | CDN URL of attached media |
+| Post not found (404 from post-service) | `PostNotFoundException` | 404 |
+| post-service is down / unreachable | `PostServiceUnavailableException` | 503 |
+| Comment is on a soft-deleted post | `PostNotFoundException` | 404 |
 
-**Indexes:** `idx_author_id`, `idx_visibility`, `idx_created_at`, `idx_is_deleted`
+Counter calls (`increment`/`decrement`) are fire-and-forget — wrapped in try-catch.
+If post-service is temporarily down, the comment is still saved.
+Counts are eventually consistent.
 
 ---
 
 ## Environment Variables Required
-
-Set these before starting the service:
 
 ```bash
 # Windows
@@ -134,38 +219,23 @@ export DB_PASSWORD=yourpassword
 export JWT_SECRET=your-256-bit-secret-must-match-auth-service-exactly
 ```
 
-> The `JWT_SECRET` must be **identical** to the one used in `auth-service`.  
+> `JWT_SECRET` must be **identical** to auth-service and post-service.
 > This service only validates tokens — it never issues them.
 
 ---
 
 ## How to Run
 
-**Prerequisites:** Java 17, MySQL running, auth-service running on port 8081.
+**Prerequisites:** Java 17, MySQL running, auth-service on 8081, post-service on 8082.
 
 ```bash
-cd post-service
+cd comment-service
 ./mvnw spring-boot:run
 ```
 
-Service starts on: `http://localhost:8082`  
-Swagger UI: `http://localhost:8082/api/v1/swagger-ui/index.html`  
-Health check: `http://localhost:8082/api/v1/actuator/health`
-
----
-
-## How JWT Authentication Works in This Service
-
-This service does NOT issue JWTs — that is auth-service's job.
-
-Flow for every protected request:
-1. Frontend sends `Authorization: Bearer <token>` header
-2. `JwtAuthenticationFilter` intercepts the request
-3. It validates the token signature using the same `JWT_SECRET` as auth-service
-4. It extracts `userId`, `email`, `role` from the token claims
-5. It stores `userId` and `role` as request attributes
-6. The controller reads `request.getAttribute("requestingUserId")` — never from the body
-7. This prevents any user from spoofing their own userId
+Service starts on: `http://localhost:8083`  
+Swagger UI: `http://localhost:8083/api/v1/swagger-ui/index.html`  
+Health check: `http://localhost:8083/api/v1/actuator/health`
 
 ---
 
@@ -175,45 +245,35 @@ Flow for every protected request:
 
 | Method | URL | Description |
 |--------|-----|-------------|
-| GET | `/api/v1/posts/public` | Browse all PUBLIC posts (guest feed) |
-| GET | `/api/v1/posts/{postId}` | View a single post by ID |
-| GET | `/api/v1/posts/user/{authorId}` | All posts by a specific user |
-| GET | `/api/v1/posts/search?keyword=java` | Search posts by keyword (PUBLIC only) |
-| GET | `/api/v1/posts/count/{authorId}` | Get total post count for a user |
+| GET | `/api/v1/comments/post/{postId}` | All comments for a post (incl. soft-deleted with placeholder) |
+| GET | `/api/v1/comments/post/{postId}/top-level` | Top-level comments only (no replies) |
+| GET | `/api/v1/comments/{commentId}` | Single comment by ID |
+| GET | `/api/v1/comments/{commentId}/replies` | All replies to a comment |
+| GET | `/api/v1/comments/count/{postId}` | Comment count for post badge |
 
 ### Protected Endpoints (JWT Required)
 
 | Method | URL | Description |
 |--------|-----|-------------|
-| POST | `/api/v1/posts` | Create a new post |
-| PUT | `/api/v1/posts/{postId}` | Update post content (author only) |
-| DELETE | `/api/v1/posts/{postId}` | Soft-delete post (author or admin) |
-| PATCH | `/api/v1/posts/{postId}/visibility` | Change visibility (author only) |
-| GET | `/api/v1/posts/feed?followeeIds=1,2,3` | Personalised news feed |
-
-### Internal Endpoints (Called by Other Microservices)
-
-| Method | URL | Description |
-|--------|-----|-------------|
-| POST | `/api/v1/posts/{postId}/likes/increment` | Increment likes — called by like-service |
-| POST | `/api/v1/posts/{postId}/likes/decrement` | Decrement likes — called by like-service |
-| POST | `/api/v1/posts/{postId}/comments/increment` | Increment comments — called by comment-service |
-| POST | `/api/v1/posts/{postId}/comments/decrement` | Decrement comments — called by comment-service |
-| POST | `/api/v1/posts/{postId}/shares/increment` | Increment shares — called on repost |
+| POST | `/api/v1/comments` | Add a top-level comment or reply |
+| PUT | `/api/v1/comments/{commentId}` | Update comment content (author only) |
+| DELETE | `/api/v1/comments/{commentId}` | Soft-delete comment (author / admin / mod) |
+| POST | `/api/v1/comments/{commentId}/like` | Like a comment |
+| POST | `/api/v1/comments/{commentId}/unlike` | Unlike a comment |
+| GET | `/api/v1/comments/user/{authorId}` | All comments by a user |
 
 ---
 
 ## Request / Response Shapes
 
-### Create Post — `POST /api/v1/posts`
+### Add a Top-Level Comment — `POST /api/v1/comments`
 
 **Request Body:**
 ```json
 {
-  "content": "Hello ConnectSphere! #firstpost @vikash",
-  "mediaUrls": [],
-  "postType": "TEXT",
-  "visibility": "PUBLIC"
+  "postId": 1,
+  "parentCommentId": null,
+  "content": "Great post! Really enjoyed reading this."
 }
 ```
 
@@ -221,109 +281,116 @@ Flow for every protected request:
 ```json
 {
   "success": true,
-  "message": "Post created successfully",
+  "message": "Comment added successfully",
   "data": {
+    "commentId": 10,
     "postId": 1,
     "authorId": 5,
-    "content": "Hello ConnectSphere! #firstpost @vikash",
-    "mediaUrls": [],
-    "postType": "TEXT",
-    "visibility": "PUBLIC",
+    "parentCommentId": null,
+    "content": "Great post! Really enjoyed reading this.",
     "likesCount": 0,
-    "commentsCount": 0,
-    "sharesCount": 0,
-    "createdAt": "2026-04-19T10:30:00",
-    "updatedAt": "2026-04-19T10:30:00"
+    "isDeleted": false,
+    "createdAt": "2026-04-19T14:00:00",
+    "updatedAt": "2026-04-19T14:00:00"
   },
-  "timestamp": "2026-04-19T10:30:00"
+  "timestamp": "2026-04-19T14:00:00"
 }
 ```
 
-### Update Post — `PUT /api/v1/posts/{postId}`
+### Add a Reply — `POST /api/v1/comments`
 
 **Request Body:**
 ```json
 {
-  "content": "Updated content here"
+  "postId": 1,
+  "parentCommentId": 10,
+  "content": "I agree with you!"
 }
 ```
 
-### Change Visibility — `PATCH /api/v1/posts/{postId}/visibility?visibility=PRIVATE`
+`parentCommentId` = 10 means this is a reply to comment 10.
 
-No body needed. Pass visibility as query param.  
-Allowed values: `PUBLIC`, `FOLLOWERS_ONLY`, `PRIVATE`
+### Update Comment — `PUT /api/v1/comments/{commentId}`
 
-### Get Feed — `GET /api/v1/posts/feed?followeeIds=1&followeeIds=2&followeeIds=3`
-
-No body. Pass followeeIds as repeated query params.
+**Request Body:**
+```json
+{
+  "content": "Updated: Great post! Learned a lot."
+}
+```
 
 ### Error Responses
 
 ```json
 {
   "success": false,
-  "message": "Post not found with id: 99",
-  "timestamp": "2026-04-19T10:30:00"
+  "message": "Comment not found with id: 99",
+  "timestamp": "2026-04-19T14:00:00"
 }
 ```
 
 | Scenario | HTTP Status |
 |---|---|
-| Post not found / soft-deleted | 404 |
-| User tries to edit someone else's post | 403 |
-| Invalid visibility value | 400 |
-| Validation error (blank content) | 400 |
+| Comment not found / soft-deleted | 404 |
+| Post not found in post-service | 404 |
+| post-service is down | 503 |
+| User modifying someone else's comment | 403 |
+| Blank content / validation error | 400 |
 | Unexpected server error | 500 |
 
 ---
 
 ## Key Design Decisions
 
-**Soft Delete:** Posts are never hard-deleted. `isDeleted = true` hides them from all
-queries but preserves the record for a 30-day audit trail (ConnectSphere NFR).
+**authorId from JWT only:** The controller never reads `authorId` from the request body.
+It always reads it from `request.getAttribute("requestingUserId")` which is set by
+`JwtAuthenticationFilter` after JWT validation. This prevents identity spoofing.
 
-**Cross-Service counters:** `likesCount`, `commentsCount`, `sharesCount` are denormalised.
-Instead of doing a `COUNT(*)` JOIN across databases on every feed render, other services
-call the increment/decrement endpoints atomically. This is the standard pattern for
-microservices with separate databases.
+**Post verification before comment:** Every `addComment()` call first hits post-service
+via FeignClient to confirm the post exists and is not deleted. This prevents orphan
+comments referencing non-existent posts.
 
-**authorId from JWT only:** The controller never accepts `authorId` in the request body.
-It always reads it from the JWT token via `request.getAttribute("requestingUserId")`.
-This prevents identity spoofing.
+**Fire-and-forget counter updates:** After a comment is saved or deleted, this service
+calls post-service to increment/decrement `commentsCount`. This call is wrapped in
+try-catch. If it fails, the comment operation still succeeds — the count is eventually
+consistent, not strictly consistent.
 
-**feedByUserIds from follow-service:** This service does not know about the follow graph.
-The caller (frontend or API gateway) is responsible for calling follow-service to get the
-list of followeeIds and then passing them to `GET /posts/feed?followeeIds=...`.
+**Soft delete preserves thread:** When a comment is deleted, the record stays in the
+database. Replies to that comment still show up in the thread. The deleted comment's
+content is replaced with `"[This comment was deleted]"` in the response. This mirrors
+how Reddit, YouTube, and most social platforms handle thread deletion.
 
-**Visibility query:** The `findFeedByUserIds` JPQL query uses string literals
-`'PUBLIC', 'FOLLOWERS_ONLY'` instead of enum references because JPQL `IN` with enums
-stored as strings requires this approach with the current Hibernate setup.
+**FeignClient over RestTemplate:** This service uses OpenFeign instead of RestTemplate
+for inter-service calls because it is cleaner and declarative. The `PostClient` interface
+defines the contract — no manual URL building, no response parsing boilerplate.
 
 ---
 
 ## Entities and DTOs Quick Reference
 
-### Post Entity (stored in DB)
+### Comment Entity (stored in DB)
 ```
-postId, authorId, content, mediaUrls (List), postType,
-visibility, likesCount, commentsCount, sharesCount,
-isDeleted, createdAt, updatedAt
+commentId, postId, authorId, parentCommentId,
+content, likesCount, isDeleted, createdAt, updatedAt
 ```
 
-### PostResponseDTO (returned in API responses)
+### CommentResponseDTO (returned in API)
 ```
-postId, authorId, content, mediaUrls, postType,
-visibility, likesCount, commentsCount, sharesCount,
-createdAt, updatedAt
+commentId, postId, authorId, parentCommentId,
+content (replaced with placeholder if deleted),
+likesCount, isDeleted, createdAt, updatedAt
 ```
-`isDeleted` is intentionally excluded from all API responses.
 
-### CreatePostRequestDTO (accepted on create)
+### AddCommentRequestDTO (accepted on create)
 ```
-content   — required, 1 to 2000 characters
-mediaUrls — optional, defaults to empty list
-postType  — optional, defaults to TEXT
-visibility — optional, defaults to PUBLIC
+postId          — required
+parentCommentId — optional (null = top-level, value = reply)
+content         — required, 1 to 1000 characters
+```
+
+### UpdateCommentRequestDTO (accepted on update)
+```
+content — required, 1 to 1000 characters
 ```
 
 ---
@@ -337,6 +404,7 @@ visibility — optional, defaults to PUBLIC
 | spring-boot-starter-data-jpa | Database access via Hibernate |
 | spring-boot-starter-validation | @NotBlank, @Size on DTOs |
 | spring-boot-starter-aop | AOP logging aspect |
+| spring-cloud-starter-openfeign | FeignClient for post-service calls |
 | spring-cloud-starter-netflix-eureka-client | Service registration in Eureka |
 | spring-cloud-starter-config | Fetch config from Config Server |
 | mysql-connector-j | MySQL JDBC driver |
@@ -349,11 +417,17 @@ visibility — optional, defaults to PUBLIC
 
 ## Related Services in ConnectSphere
 
-| Service | Port | Interacts With Post-Service How |
+| Service | Port | Interacts With Comment-Service How |
 |---|---|---|
-| auth-service | 8081 | Issues JWT tokens that post-service validates |
-| like-service | 8083 | Calls `/posts/{id}/likes/increment` and `/decrement` |
-| comment-service | 8084 | Calls `/posts/{id}/comments/increment` and `/decrement` |
-| follow-service | 8085 | Provides followeeIds list for `GET /posts/feed` |
-| search-service | 8086 | Calls `/posts/{id}` to index post content for hashtags |
+| auth-service | 8081 | Issues JWT tokens that comment-service validates |
+| post-service | 8082 | comment-service calls it to verify posts and update counters |
+| like-service | 8084 | In full implementation, like-service handles comment likes too |
 
+---
+
+## ConnectSphere Case Study Reference
+
+- Section 2.3 — Registered User Requirements (comment on posts, reply to comments, like comments, edit/delete own comments)
+- Section 4.3 — Comment-Service Class Diagram
+- Section 5 — Microservices Architecture Overview
+- Section 6 — NFR: soft-delete 30-day retention, graceful degradation on partial failure
