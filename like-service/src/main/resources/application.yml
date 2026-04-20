@@ -1,0 +1,76 @@
+spring:
+  application:
+    name: like-service
+
+  config:
+    import: optional:configserver:http://localhost:8888
+
+  datasource:
+    url: jdbc:mysql://localhost:3306/connectsphere_like?createDatabaseIfNotExist=true&useSSL=false&serverTimezone=Asia/Kolkata
+    username: ${DB_USERNAME}
+    password: ${DB_PASSWORD}
+    driver-class-name: com.mysql.cj.jdbc.Driver
+
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: true
+    properties:
+      hibernate:
+        format_sql: true
+
+server:
+  port: 8084
+  servlet:
+    context-path: /api/v1
+
+eureka:
+  client:
+    service-url:
+      defaultZone: http://localhost:8761/eureka/
+    fetch-registry: true
+    register-with-eureka: true
+  instance:
+    prefer-ip-address: true
+    instance-id: ${spring.application.name}:${server.port}
+
+jwt:
+  secret: ${JWT_SECRET}
+
+# Feign client config — service names match Eureka registration names
+# No hardcoded URLs needed — Feign resolves via lb://service-name
+feign:
+  client:
+    config:
+      post-service:              # matches @FeignClient(name = "post-service")
+        connect-timeout: 3000
+        read-timeout: 5000
+        logger-level: BASIC
+      comment-service:           # matches @FeignClient(name = "comment-service")
+        connect-timeout: 3000
+        read-timeout: 5000
+        logger-level: BASIC
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics
+  endpoint:
+    health:
+      show-details: always
+
+logging:
+  level:
+    com.connectsphere.like: DEBUG
+    org.springframework.security: INFO
+    org.hibernate.SQL: DEBUG
+    com.connectsphere.like.feign: DEBUG   # Shows Feign request/response logs
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"
+
+springdoc:
+  api-docs:
+    path: /api-docs
+  swagger-ui:
+    path: /swagger-ui.html

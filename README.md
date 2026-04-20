@@ -1,424 +1,323 @@
-# comment-service — ConnectSphere
+# like-service — ConnectSphere
 
-**Microservice:** `comment-service`  
-**Port:** `8083`  
-**Base URL:** `http://localhost:8083/api/v1`  
-**Database:** `connectsphere_comment` (MySQL)  
-**Part of:** ConnectSphere Social Media Mini Platform
+Polymorphic reaction system for posts and comments. Supports 6 emoji reaction types (LIKE, LOVE, HAHA, WOW, SAD, ANGRY), enforces one reaction per user per target, and exposes a full reaction summary map for rendering emoji bars on the frontend.
 
 ---
 
-## What This Service Does
+## 🧱 Tech Stack
 
-The comment-service handles all threaded discussions on posts in ConnectSphere.  
-It is one of eight independent microservices in the platform.
-
-Responsibilities:
-- Add top-level comments on posts
-- Add replies to existing comments (two-level threading)
-- Edit and soft-delete comments (author or admin only)
-- Like and unlike comments (atomic counter updates)
-- Get all comments for a post, or only top-level ones
-- Get replies for a specific comment
-- Get all comments written by a user
-- Get comment count for post badge display
-- Verify post existence before allowing a comment (via FeignClient to post-service)
-- Notify post-service to increment/decrement `commentsCount` after add/delete
-
----
-
-## Architecture — 5-Layer Structure
-
-```
-CommentResource (Controller)       <- REST API layer, reads userId from JWT
-    |
-CommentService (Interface)         <- Business contract
-    |
-CommentServiceImpl (Implementation)<- All business logic lives here
-    |
-CommentRepository (JPA Interface)  <- Custom JPQL queries
-    |
-MySQL DB (connectsphere_comment)   <- comments table
-```
-
-Cross-cutting:
-- `JwtAuthenticationFilter` — validates JWT, stores userId + role in request attributes
-- `PostClient` (FeignClient) — calls post-service to verify posts and update counters
-- `GlobalExceptionHandler` — converts all exceptions to consistent JSON responses
+| Layer | Technology |
+|---|---|
+| Language | Java 17 |
+| Framework | Spring Boot 3.2.0 |
+| Security | Spring Security + JWT |
+| Database | MySQL (`connectsphere_like`) |
+| ORM | Spring Data JPA (Hibernate) |
+| Service Discovery | Netflix Eureka Client |
+| Config Management | Spring Cloud Config Server |
+| Inter-Service Calls | OpenFeign (`post-service`, `comment-service`) |
+| API Docs | SpringDoc OpenAPI (Swagger UI) |
+| Monitoring | Spring Boot Actuator |
+| Build Tool | Maven |
 
 ---
 
-## How This Service Differs From post-service
-
-The comment-service introduces one new concept that post-service does not have:
-**inter-service communication via FeignClient.**
-
-Before saving any comment, this service calls post-service to:
-1. Verify the post actually exists (`GET /posts/{postId}`)
-2. Block comments on soft-deleted posts
-3. Increment `commentsCount` on the post after a comment is added
-4. Decrement `commentsCount` on the post after a comment is deleted
-
-This keeps the post's `commentsCount` always in sync without doing expensive
-`COUNT(*)` queries across databases.
-
----
-
-## Two-Level Threading Model
+## 📁 Project Structure
 
 ```
-Post
- |-- Comment A  (parentCommentId = null)       <- top-level comment
- |    |-- Reply 1  (parentCommentId = A)       <- reply to Comment A
- |    |-- Reply 2  (parentCommentId = A)       <- reply to Comment A
- |-- Comment B  (parentCommentId = null)       <- top-level comment
-      |-- Reply 3  (parentCommentId = B)       <- reply to Comment B
-```
-
-Only two levels are supported as per the ConnectSphere case study (section 4.3).
-You cannot reply to a reply — `parentCommentId` always points to a top-level comment.
-
----
-
-## Soft-Delete Behaviour
-
-When a comment is deleted, `isDeleted` is set to `true` — the record stays in the DB.
-
-In API responses, the `toDTO()` method replaces the content of deleted comments:
-```
-"content": "[This comment was deleted]"
-```
-
-This preserves thread structure — if Comment A has replies and is deleted,
-the replies still show under it. The thread is not broken.
-
----
-
-## Project Structure
-
-```
-comment-service/
-|-- src/main/java/com/connectsphere/comment/
-|   |-- CommentServiceApplication.java         <- Spring Boot entry point
-|   |-- aop/
-|   |   |-- LoggingAspect.java                 <- AOP logging (entry, exit, timing, exceptions)
-|   |-- client/
-|   |   |-- PostClient.java                    <- FeignClient — calls post-service REST APIs
-|   |-- config/
-|   |   |-- ApplicationConfig.java             <- RestTemplate bean
-|   |   |-- SecurityConfig.java                <- Public vs protected endpoint rules
-|   |-- controller/
-|   |   |-- CommentResource.java               <- All REST endpoints
-|   |-- dto/
-|   |   |-- ApiResponseDTO.java                <- Generic wrapper {success, message, data, timestamp}
-|   |   |-- AddCommentRequestDTO.java          <- Request body for POST /comments
-|   |   |-- UpdateCommentRequestDTO.java       <- Request body for PUT /comments/{id}
-|   |   |-- CommentResponseDTO.java            <- Returned by all comment endpoints
-|   |   |-- PostResponseDTO.java               <- Used to deserialize post-service response
-|   |-- entity/
-|   |   |-- Comment.java                       <- JPA entity mapped to 'comments' table
-|   |-- exception/
-|   |   |-- GlobalExceptionHandler.java        <- Central error handler
-|   |   |-- CommentNotFoundException.java      <- Comment not found / soft-deleted
-|   |   |-- PostNotFoundException.java         <- Post not found in post-service
-|   |   |-- PostServiceUnavailableException.java <- post-service is down (503)
-|   |   |-- UnauthorizedActionException.java   <- User modifying someone else's comment
-|   |-- repository/
-|   |   |-- CommentRepository.java             <- All DB queries
-|   |-- security/
-|   |   |-- JwtAuthenticationFilter.java       <- JWT validation, sets userId in request
-|   |-- service/
-|       |-- CommentService.java                <- Interface (business contract)
-|       |-- CommentServiceImpl.java            <- Full implementation
-|-- src/main/resources/
-|   |-- application.yml                        <- Port, DB, JWT, Feign, Eureka config
-|-- pom.xml                                    <- Dependencies
+like-service/
+├── src/main/java/com/connectsphere/like/
+│   ├── LikeServiceApplication.java          ← Main entry point
+│   ├── aop/
+│   │   └── LoggingAspect.java               ← AOP method-level logging
+│   ├── client/
+│   │   ├── PostServiceClient.java           ← Feign client → post-service
+│   │   └── CommentServiceClient.java        ← Feign client → comment-service
+│   ├── config/
+│   │   ├── ApplicationConfig.java           ← Feign + bean config
+│   │   └── SecurityConfig.java              ← JWT security filter chain
+│   ├── controller/
+│   │   └── LikeResource.java                ← REST API (9 endpoints)
+│   ├── dto/
+│   │   ├── ApiResponseDTO.java              ← Standard API wrapper
+│   │   ├── LikeRequestDTO.java              ← POST body for new reaction
+│   │   ├── LikeResponseDTO.java             ← Response for a single like
+│   │   ├── ChangeReactionRequestDTO.java    ← PUT body for reaction change
+│   │   └── ReactionSummaryDTO.java          ← Map of all 6 reaction counts
+│   ├── entity/
+│   │   ├── Like.java                        ← Main entity (likeId, userId, targetId, targetType, reactionType)
+│   │   ├── TargetType.java                  ← Enum: POST, COMMENT
+│   │   └── ReactionType.java                ← Enum: LIKE, LOVE, HAHA, WOW, SAD, ANGRY
+│   ├── exception/
+│   │   ├── AlreadyLikedException.java       ← 409 when user reacts twice on same target
+│   │   ├── LikeNotFoundException.java       ← 404 when reaction doesn't exist
+│   │   └── GlobalExceptionHandler.java      ← @ControllerAdvice for all errors
+│   ├── repository/
+│   │   └── LikeRepository.java              ← JPA queries for all like operations
+│   ├── security/
+│   │   └── JwtAuthenticationFilter.java     ← Reads JWT, sets requestingUserId attribute
+│   └── service/
+│       ├── LikeService.java                 ← Interface (business contract)
+│       └── LikeServiceImpl.java             ← Business logic implementation
+├── src/main/resources/
+│   └── application.yml                      ← Port 8084, DB, Eureka, JWT, Feign config
+└── src/test/java/com/connectsphere/like/
+    ├── LikeServiceApplicationTests.java
+    └── service/
+        └── LikeServiceImplTest.java         ← Unit tests (9 nested test groups)
 ```
 
 ---
 
-## Database
+## ⚙️ Configuration
 
-**Database name:** `connectsphere_comment`  
-Created automatically on first startup (`createDatabaseIfNotExist=true`).
+### application.yml highlights
 
-### `comments` Table
+| Property | Value |
+|---|---|
+| Server Port | `8084` |
+| Context Path | `/api/v1` |
+| Database | `connectsphere_like` (MySQL) |
+| Eureka URL | `http://localhost:8761/eureka/` |
+| Config Server | `http://localhost:8888` |
+| DDL Auto | `update` |
+
+### Environment Variables Required
+
+| Variable | Description |
+|---|---|
+| `DB_USERNAME` | MySQL username |
+| `DB_PASSWORD` | MySQL password |
+| `JWT_SECRET` | Secret key for JWT validation (must match auth-service) |
+
+Set before running:
+```bash
+export DB_USERNAME=root
+export DB_PASSWORD=yourpassword
+export JWT_SECRET=your_very_long_secret_key_minimum_32_characters
+```
+
+---
+
+## 🗄️ Database
+
+**Database name:** `connectsphere_like`
+
+Auto-created on first run (`createDatabaseIfNotExist=true`).
+
+### `likes` table (auto-generated by Hibernate)
 
 | Column | Type | Notes |
 |---|---|---|
-| comment_id | INT PK AUTO_INCREMENT | Primary key |
-| post_id | INT NOT NULL | Cross-service ref to posts.post_id in post-service |
-| author_id | INT NOT NULL | Cross-service ref to users.user_id in auth-service |
-| parent_comment_id | INT NULL | null = top-level, value = reply to this commentId |
-| content | TEXT NOT NULL | Text body of the comment |
-| likes_count | INT DEFAULT 0 | Denormalised like counter |
-| is_deleted | BOOLEAN DEFAULT false | Soft-delete flag |
-| created_at | DATETIME | Auto-set on INSERT |
-| updated_at | DATETIME | Auto-updated on UPDATE |
+| `like_id` | INT (PK, Auto) | Primary key |
+| `user_id` | INT | Who reacted (cross-service ref to auth-service) |
+| `target_id` | INT | Post ID or Comment ID |
+| `target_type` | VARCHAR(10) | `POST` or `COMMENT` |
+| `reaction_type` | VARCHAR(10) | `LIKE, LOVE, HAHA, WOW, SAD, ANGRY` |
+| `created_at` | DATETIME | Auto-set on insert, never updated |
 
-**Indexes:** `idx_post_id`, `idx_author_id`, `idx_parent_comment_id`, `idx_is_deleted`
+**Unique constraint:** `uk_user_target` on `(user_id, target_id, target_type)` — enforces one reaction per user per target at the database level.
 
-> There are **no foreign keys** to other services' databases. `post_id` and `author_id`
-> are plain integer columns. Cross-service integrity is enforced via FeignClient calls
-> at the application layer, not at the DB layer.
+**Indexes:** `idx_user_id`, `idx_target_id`, `idx_target_type`, `idx_user_target`, `idx_reaction_type`
 
 ---
 
-## FeignClient — PostClient
+## 🔗 API Endpoints
 
-`PostClient.java` is the inter-service communication layer.
-It replaces `RestTemplate` with the cleaner OpenFeign declarative approach.
+**Base URL:** `http://localhost:8084/api/v1`
 
-```java
-@FeignClient(name = "post-service", url = "${post-service.base-url}")
-public interface PostClient {
+All endpoints require `Authorization: Bearer <token>` header.
 
-    @GetMapping("/posts/{postId}")
-    PostResponseDTO getPostById(@PathVariable Integer postId);
-
-    @PostMapping("/posts/{postId}/comments/increment")
-    void incrementCommentCount(@PathVariable Integer postId);
-
-    @PostMapping("/posts/{postId}/comments/decrement")
-    void decrementCommentCount(@PathVariable Integer postId);
-}
-```
-
-**Why `PostResponseDTO` directly (not `ApiResponseDTO<PostResponseDTO>`)?**
-
-Feign uses Jackson to deserialize. Java's generic type erasure means Feign cannot
-resolve `ApiResponseDTO<PostResponseDTO>` at runtime — it would deserialize the `data`
-field as `LinkedHashMap` instead of `PostResponseDTO`. Returning the concrete type
-directly solves this completely.
-
-**Failure handling:**
-
-| Scenario | Exception Thrown | HTTP Response |
+| Method | Endpoint | Description |
 |---|---|---|
-| Post not found (404 from post-service) | `PostNotFoundException` | 404 |
-| post-service is down / unreachable | `PostServiceUnavailableException` | 503 |
-| Comment is on a soft-deleted post | `PostNotFoundException` | 404 |
+| `POST` | `/likes` | Add a reaction to a post or comment |
+| `DELETE` | `/likes?targetId=&targetType=` | Remove your reaction (unlike) |
+| `PUT` | `/likes/change` | Change your existing reaction type |
+| `GET` | `/likes/has?targetId=&targetType=` | Check if you have already reacted |
+| `GET` | `/likes/target?targetId=&targetType=` | Get all reactions on a target |
+| `GET` | `/likes/user/{userId}` | Get all reactions made by a user |
+| `GET` | `/likes/count?targetId=&targetType=` | Total reaction count on a target |
+| `GET` | `/likes/count/type?targetId=&targetType=&reactionType=` | Count of one specific reaction type |
+| `GET` | `/likes/summary?targetId=&targetType=` | Full emoji reaction bar summary |
 
-Counter calls (`increment`/`decrement`) are fire-and-forget — wrapped in try-catch.
-If post-service is temporarily down, the comment is still saved.
-Counts are eventually consistent.
+### Request / Response Examples
 
----
-
-## Environment Variables Required
-
-```bash
-# Windows
-setx DB_USERNAME "root"
-setx DB_PASSWORD "yourpassword"
-setx JWT_SECRET "your-256-bit-secret-must-match-auth-service-exactly"
-
-# Linux / Mac
-export DB_USERNAME=root
-export DB_PASSWORD=yourpassword
-export JWT_SECRET=your-256-bit-secret-must-match-auth-service-exactly
-```
-
-> `JWT_SECRET` must be **identical** to auth-service and post-service.
-> This service only validates tokens — it never issues them.
-
----
-
-## How to Run
-
-**Prerequisites:** Java 17, MySQL running, auth-service on 8081, post-service on 8082.
-
-```bash
-cd comment-service
-./mvnw spring-boot:run
-```
-
-Service starts on: `http://localhost:8083`  
-Swagger UI: `http://localhost:8083/api/v1/swagger-ui/index.html`  
-Health check: `http://localhost:8083/api/v1/actuator/health`
-
----
-
-## All API Endpoints
-
-### Public Endpoints (No JWT Required)
-
-| Method | URL | Description |
-|--------|-----|-------------|
-| GET | `/api/v1/comments/post/{postId}` | All comments for a post (incl. soft-deleted with placeholder) |
-| GET | `/api/v1/comments/post/{postId}/top-level` | Top-level comments only (no replies) |
-| GET | `/api/v1/comments/{commentId}` | Single comment by ID |
-| GET | `/api/v1/comments/{commentId}/replies` | All replies to a comment |
-| GET | `/api/v1/comments/count/{postId}` | Comment count for post badge |
-
-### Protected Endpoints (JWT Required)
-
-| Method | URL | Description |
-|--------|-----|-------------|
-| POST | `/api/v1/comments` | Add a top-level comment or reply |
-| PUT | `/api/v1/comments/{commentId}` | Update comment content (author only) |
-| DELETE | `/api/v1/comments/{commentId}` | Soft-delete comment (author / admin / mod) |
-| POST | `/api/v1/comments/{commentId}/like` | Like a comment |
-| POST | `/api/v1/comments/{commentId}/unlike` | Unlike a comment |
-| GET | `/api/v1/comments/user/{authorId}` | All comments by a user |
-
----
-
-## Request / Response Shapes
-
-### Add a Top-Level Comment — `POST /api/v1/comments`
-
-**Request Body:**
+**POST /likes** — React to a post
 ```json
+// Request Body
 {
-  "postId": 1,
-  "parentCommentId": null,
-  "content": "Great post! Really enjoyed reading this."
+  "targetId": 1,
+  "targetType": "POST",
+  "reactionType": "LOVE"
+}
+
+// Response 201 Created
+{
+  "success": true,
+  "message": "Reaction added",
+  "data": {
+    "likeId": 1,
+    "userId": 5,
+    "targetId": 1,
+    "targetType": "POST",
+    "reactionType": "LOVE",
+    "createdAt": "2026-04-19T10:00:00"
+  }
 }
 ```
 
-**Success Response (201):**
+**PUT /likes/change** — Change reaction
+```json
+// Request Body
+{
+  "targetId": 1,
+  "targetType": "POST",
+  "newReactionType": "HAHA"
+}
+```
+
+**GET /likes/summary?targetId=1&targetType=POST** — Emoji reaction bar
 ```json
 {
   "success": true,
-  "message": "Comment added successfully",
   "data": {
-    "commentId": 10,
-    "postId": 1,
-    "authorId": 5,
-    "parentCommentId": null,
-    "content": "Great post! Really enjoyed reading this.",
-    "likesCount": 0,
-    "isDeleted": false,
-    "createdAt": "2026-04-19T14:00:00",
-    "updatedAt": "2026-04-19T14:00:00"
-  },
-  "timestamp": "2026-04-19T14:00:00"
+    "reactions": {
+      "LIKE": 12,
+      "LOVE": 5,
+      "HAHA": 2,
+      "WOW": 1,
+      "SAD": 0,
+      "ANGRY": 0
+    },
+    "total": 20
+  }
 }
-```
-
-### Add a Reply — `POST /api/v1/comments`
-
-**Request Body:**
-```json
-{
-  "postId": 1,
-  "parentCommentId": 10,
-  "content": "I agree with you!"
-}
-```
-
-`parentCommentId` = 10 means this is a reply to comment 10.
-
-### Update Comment — `PUT /api/v1/comments/{commentId}`
-
-**Request Body:**
-```json
-{
-  "content": "Updated: Great post! Learned a lot."
-}
-```
-
-### Error Responses
-
-```json
-{
-  "success": false,
-  "message": "Comment not found with id: 99",
-  "timestamp": "2026-04-19T14:00:00"
-}
-```
-
-| Scenario | HTTP Status |
-|---|---|
-| Comment not found / soft-deleted | 404 |
-| Post not found in post-service | 404 |
-| post-service is down | 503 |
-| User modifying someone else's comment | 403 |
-| Blank content / validation error | 400 |
-| Unexpected server error | 500 |
-
----
-
-## Key Design Decisions
-
-**authorId from JWT only:** The controller never reads `authorId` from the request body.
-It always reads it from `request.getAttribute("requestingUserId")` which is set by
-`JwtAuthenticationFilter` after JWT validation. This prevents identity spoofing.
-
-**Post verification before comment:** Every `addComment()` call first hits post-service
-via FeignClient to confirm the post exists and is not deleted. This prevents orphan
-comments referencing non-existent posts.
-
-**Fire-and-forget counter updates:** After a comment is saved or deleted, this service
-calls post-service to increment/decrement `commentsCount`. This call is wrapped in
-try-catch. If it fails, the comment operation still succeeds — the count is eventually
-consistent, not strictly consistent.
-
-**Soft delete preserves thread:** When a comment is deleted, the record stays in the
-database. Replies to that comment still show up in the thread. The deleted comment's
-content is replaced with `"[This comment was deleted]"` in the response. This mirrors
-how Reddit, YouTube, and most social platforms handle thread deletion.
-
-**FeignClient over RestTemplate:** This service uses OpenFeign instead of RestTemplate
-for inter-service calls because it is cleaner and declarative. The `PostClient` interface
-defines the contract — no manual URL building, no response parsing boilerplate.
-
----
-
-## Entities and DTOs Quick Reference
-
-### Comment Entity (stored in DB)
-```
-commentId, postId, authorId, parentCommentId,
-content, likesCount, isDeleted, createdAt, updatedAt
-```
-
-### CommentResponseDTO (returned in API)
-```
-commentId, postId, authorId, parentCommentId,
-content (replaced with placeholder if deleted),
-likesCount, isDeleted, createdAt, updatedAt
-```
-
-### AddCommentRequestDTO (accepted on create)
-```
-postId          — required
-parentCommentId — optional (null = top-level, value = reply)
-content         — required, 1 to 1000 characters
-```
-
-### UpdateCommentRequestDTO (accepted on update)
-```
-content — required, 1 to 1000 characters
 ```
 
 ---
 
-## Dependencies (pom.xml Summary)
+## 🔒 Security
 
-| Dependency | Purpose |
-|---|---|
-| spring-boot-starter-web | REST API with embedded Tomcat |
-| spring-boot-starter-security | JWT-based authentication |
-| spring-boot-starter-data-jpa | Database access via Hibernate |
-| spring-boot-starter-validation | @NotBlank, @Size on DTOs |
-| spring-boot-starter-aop | AOP logging aspect |
-| spring-cloud-starter-openfeign | FeignClient for post-service calls |
-| spring-cloud-starter-netflix-eureka-client | Service registration in Eureka |
-| spring-cloud-starter-config | Fetch config from Config Server |
-| mysql-connector-j | MySQL JDBC driver |
-| jjwt-api / jjwt-impl / jjwt-jackson | JWT validation (v0.12.3) |
-| lombok | Boilerplate reduction |
-| spring-boot-starter-actuator | Health check endpoints |
-| springdoc-openapi-starter-webmvc-ui | Swagger UI (v2.3.0) |
+- All 9 endpoints are **protected by JWT**.
+- `JwtAuthenticationFilter` validates the Bearer token on every request and sets `requestingUserId` as a request attribute.
+- Controllers always extract `userId` from the JWT attribute — **never from the request body** — to prevent impersonation attacks.
+- Feign inter-service calls to `post-service` and `comment-service` forward the JWT header automatically.
 
 ---
 
-## Related Services in ConnectSphere
+## 🔄 Inter-Service Communication
 
-| Service | Port | Interacts With Comment-Service How |
+| Service | Feign Client | Purpose |
 |---|---|---|
-| auth-service | 8081 | Issues JWT tokens that comment-service validates |
-| post-service | 8082 | comment-service calls it to verify posts and update counters |
-| like-service | 8084 | In full implementation, like-service handles comment likes too |
+| `post-service` (port 8083) | `PostServiceClient` | Validate post exists before reacting; update likesCount counter |
+| `comment-service` (port 8082) | `CommentServiceClient` | Validate comment exists before reacting; update likesCount counter |
+
+Feign timeout config:
+- Connect timeout: `3000ms`
+- Read timeout: `5000ms`
+- Service resolution: via Eureka (`lb://service-name`) — no hardcoded URLs
+
+---
+
+## 🚀 How to Run
+
+### Prerequisites
+- Java 17+
+- Maven 3.8+
+- MySQL running on port 3306
+- Eureka Server running on port 8761
+- Config Server running on port 8888 *(or skip — it's marked `optional`)*
+- `post-service` and `comment-service` running *(for Feign calls)*
+
+### Steps
+```bash
+# 1. Navigate to like-service folder
+cd like-service
+
+# 2. Set environment variables
+export DB_USERNAME=root
+export DB_PASSWORD=yourpassword
+export JWT_SECRET=mySecretKey12345678901234567890123456789
+
+# 3. Build
+mvn clean install -DskipTests
+
+# 4. Run
+mvn spring-boot:run
+```
+
+### Verify it's running
+```
+GET http://localhost:8084/api/v1/actuator/health
+→ { "status": "UP" }
+```
+
+**Swagger UI:** `http://localhost:8084/api/v1/swagger-ui.html`
+**API Docs JSON:** `http://localhost:8084/api/v1/api-docs`
+
+---
+
+## 🧪 Running Unit Tests
+
+```bash
+mvn test
+```
+
+Test groups in `LikeServiceImplTest.java`:
+
+| Nested Class | What It Tests |
+|---|---|
+| `LikeTargetTests` | Add reactions — happy path + AlreadyLikedException |
+| `UnlikeTargetTests` | Remove reactions — happy path + LikeNotFoundException |
+| `HasLikedTests` | Boolean check for existing reaction |
+| `GetLikesByTargetTests` | Fetch all reactions on a target |
+| `GetLikesByUserTests` | Fetch all reactions by a user |
+| `GetLikeCountTests` | Total count on a target |
+| `GetLikeCountByTypeTests` | Count for one specific reaction type |
+| `GetReactionSummaryTests` | Full emoji summary map |
+| `ChangeReactionTests` | Update reaction type (atomic delete + insert) |
+
+---
+
+## 📊 Actuator Endpoints
+
+| Endpoint | URL |
+|---|---|
+| Health | `GET http://localhost:8084/api/v1/actuator/health` |
+| Info | `GET http://localhost:8084/api/v1/actuator/info` |
+| Metrics | `GET http://localhost:8084/api/v1/actuator/metrics` |
+
+---
+
+## 🧩 Enum Reference
+
+### ReactionType
+| Value | Emoji |
+|---|---|
+| `LIKE` | 👍 |
+| `LOVE` | ❤️ |
+| `HAHA` | 😂 |
+| `WOW` | 😮 |
+| `SAD` | 😢 |
+| `ANGRY` | 😡 |
+
+### TargetType
+| Value | Applies To |
+|---|---|
+| `POST` | A social media post |
+| `COMMENT` | A comment on a post |
+
+---
+
+## 🏃 Service Startup Order
+
+Start services in this order to avoid connection errors:
+
+```
+1. config-server   (port 8888)
+2. eureka-server   (port 8761)
+3. auth-service    (port 8081)
+4. post-service    (port 8083)
+5. comment-service (port 8082)
+6. like-service    (port 8084)  ← this service
+```
