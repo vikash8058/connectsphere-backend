@@ -69,7 +69,21 @@ spring:
             - JwtAuthenticationFilter
 
         # ── FOLLOW SERVICE ─────
-        - id: follow-service
+
+        # PUBLIC — guests can view follower/following counts and lists (case study 2.2)
+        - id: follow-service-public
+          uri: lb://follow-service
+          predicates:
+            - Path=/api/v1/follows/*/followers,
+              /api/v1/follows/*/following,
+              /api/v1/follows/*/follower-count,
+              /api/v1/follows/*/following-count,
+              /api/v1/follows/*/counts,
+              /api/v1/follows/*/mutual,
+              /api/v1/follows/*/followee-ids
+
+        # PROTECTED — follow/unfollow/check/suggestions require JWT (case study 2.3)
+        - id: follow-service-protected
           uri: lb://follow-service
           predicates:
             - Path=/api/v1/follows/**

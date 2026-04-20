@@ -1,6 +1,6 @@
-# like-service — ConnectSphere
+# follow-service — ConnectSphere
 
-Polymorphic reaction system for posts and comments. Supports 6 emoji reaction types (LIKE, LOVE, HAHA, WOW, SAD, ANGRY), enforces one reaction per user per target, and exposes a full reaction summary map for rendering emoji bars on the frontend.
+Directed social graph service. Manages follow/unfollow relationships between users, computes follower and following counts, finds mutual connections, and generates "People You May Know" suggestions based on second-degree connections.
 
 ---
 
@@ -11,11 +11,10 @@ Polymorphic reaction system for posts and comments. Supports 6 emoji reaction ty
 | Language | Java 17 |
 | Framework | Spring Boot 3.2.0 |
 | Security | Spring Security + JWT |
-| Database | MySQL (`connectsphere_like`) |
+| Database | MySQL (`connectsphere_follow`) |
 | ORM | Spring Data JPA (Hibernate) |
 | Service Discovery | Netflix Eureka Client |
 | Config Management | Spring Cloud Config Server |
-| Inter-Service Calls | OpenFeign (`post-service`, `comment-service`) |
 | API Docs | SpringDoc OpenAPI (Swagger UI) |
 | Monitoring | Spring Boot Actuator |
 | Build Tool | Maven |
@@ -25,46 +24,41 @@ Polymorphic reaction system for posts and comments. Supports 6 emoji reaction ty
 ## 📁 Project Structure
 
 ```
-like-service/
-├── src/main/java/com/connectsphere/like/
-│   ├── LikeServiceApplication.java          ← Main entry point
+follow-service/
+├── src/main/java/com/connectsphere/follow/
+│   ├── FollowServiceApplication.java        ← Main entry point
 │   ├── aop/
-│   │   └── LoggingAspect.java               ← AOP method-level logging
-│   ├── client/
-│   │   ├── PostServiceClient.java           ← Feign client → post-service
-│   │   └── CommentServiceClient.java        ← Feign client → comment-service
+│   │   └── LoggingAspect.java              ← AOP method-level logging
 │   ├── config/
-│   │   ├── ApplicationConfig.java           ← Feign + bean config
-│   │   └── SecurityConfig.java              ← JWT security filter chain
+│   │   ├── ApplicationConfig.java          ← Bean configuration
+│   │   └── SecurityConfig.java             ← JWT security filter chain (mixed public/protected)
 │   ├── controller/
-│   │   └── LikeResource.java                ← REST API (9 endpoints)
+│   │   └── FollowResource.java             ← REST API (11 endpoints)
 │   ├── dto/
-│   │   ├── ApiResponseDTO.java              ← Standard API wrapper
-│   │   ├── LikeRequestDTO.java              ← POST body for new reaction
-│   │   ├── LikeResponseDTO.java             ← Response for a single like
-│   │   ├── ChangeReactionRequestDTO.java    ← PUT body for reaction change
-│   │   └── ReactionSummaryDTO.java          ← Map of all 6 reaction counts
+│   │   ├── ApiResponseDTO.java             ← Standard API wrapper
+│   │   ├── FollowResponseDTO.java          ← Response for a follow record
+│   │   └── FollowCountDTO.java             ← Holds followerCount + followingCount
 │   ├── entity/
-│   │   ├── Like.java                        ← Main entity (likeId, userId, targetId, targetType, reactionType)
-│   │   ├── TargetType.java                  ← Enum: POST, COMMENT
-│   │   └── ReactionType.java                ← Enum: LIKE, LOVE, HAHA, WOW, SAD, ANGRY
+│   │   ├── Follow.java                     ← Main entity (followId, followerId, followeeId, status)
+│   │   └── FollowStatus.java               ← Enum: ACTIVE, PENDING
 │   ├── exception/
-│   │   ├── AlreadyLikedException.java       ← 409 when user reacts twice on same target
-│   │   ├── LikeNotFoundException.java       ← 404 when reaction doesn't exist
-│   │   └── GlobalExceptionHandler.java      ← @ControllerAdvice for all errors
+│   │   ├── AlreadyFollowingException.java  ← 409 when already following
+│   │   ├── FollowNotFoundException.java    ← 404 when follow record missing
+│   │   ├── SelfFollowException.java        ← 400 when user tries to follow themselves
+│   │   └── GlobalExceptionHandler.java     ← @ControllerAdvice for all errors
 │   ├── repository/
-│   │   └── LikeRepository.java              ← JPA queries for all like operations
+│   │   └── FollowRepository.java           ← JPA queries for all follow operations
 │   ├── security/
-│   │   └── JwtAuthenticationFilter.java     ← Reads JWT, sets requestingUserId attribute
+│   │   └── JwtAuthenticationFilter.java    ← Reads JWT, sets requestingUserId attribute
 │   └── service/
-│       ├── LikeService.java                 ← Interface (business contract)
-│       └── LikeServiceImpl.java             ← Business logic implementation
+│       ├── FollowService.java              ← Interface (business contract)
+│       └── FollowServiceImpl.java          ← Business logic implementation
 ├── src/main/resources/
-│   └── application.yml                      ← Port 8084, DB, Eureka, JWT, Feign config
-└── src/test/java/com/connectsphere/like/
-    ├── LikeServiceApplicationTests.java
+│   └── application.yml                     ← Port 8085, DB, Eureka, JWT config
+└── src/test/java/com/connectsphere/follow/
+    ├── FollowServiceApplicationTests.java
     └── service/
-        └── LikeServiceImplTest.java         ← Unit tests (9 nested test groups)
+        └── FollowServiceImplTest.java      ← Unit tests (8 nested test groups)
 ```
 
 ---
@@ -75,9 +69,9 @@ like-service/
 
 | Property | Value |
 |---|---|
-| Server Port | `8084` |
+| Server Port | `8085` |
 | Context Path | `/api/v1` |
-| Database | `connectsphere_like` (MySQL) |
+| Database | `connectsphere_follow` (MySQL) |
 | Eureka URL | `http://localhost:8761/eureka/` |
 | Config Server | `http://localhost:8888` |
 | DDL Auto | `update` |
@@ -101,96 +95,87 @@ export JWT_SECRET=your_very_long_secret_key_minimum_32_characters
 
 ## 🗄️ Database
 
-**Database name:** `connectsphere_like`
+**Database name:** `connectsphere_follow`
 
 Auto-created on first run (`createDatabaseIfNotExist=true`).
 
-### `likes` table (auto-generated by Hibernate)
+### `follows` table (auto-generated by Hibernate)
 
 | Column | Type | Notes |
 |---|---|---|
-| `like_id` | INT (PK, Auto) | Primary key |
-| `user_id` | INT | Who reacted (cross-service ref to auth-service) |
-| `target_id` | INT | Post ID or Comment ID |
-| `target_type` | VARCHAR(10) | `POST` or `COMMENT` |
-| `reaction_type` | VARCHAR(10) | `LIKE, LOVE, HAHA, WOW, SAD, ANGRY` |
+| `follow_id` | INT (PK, Auto) | Primary key |
+| `follower_id` | INT | User who is following (cross-service ref to auth-service) |
+| `followee_id` | INT | User being followed (cross-service ref to auth-service) |
+| `status` | VARCHAR(10) | `ACTIVE` or `PENDING` |
 | `created_at` | DATETIME | Auto-set on insert, never updated |
 
-**Unique constraint:** `uk_user_target` on `(user_id, target_id, target_type)` — enforces one reaction per user per target at the database level.
+**Unique constraint:** `uk_follower_followee` on `(follower_id, followee_id)` — prevents duplicate follows at the database level.
 
-**Indexes:** `idx_user_id`, `idx_target_id`, `idx_target_type`, `idx_user_target`, `idx_reaction_type`
+**Indexes:** `idx_follower_id`, `idx_followee_id`, `idx_status`, `idx_created_at`
 
 ---
 
 ## 🔗 API Endpoints
 
-**Base URL:** `http://localhost:8084/api/v1`
+**Base URL:** `http://localhost:8085/api/v1`
 
-All endpoints require `Authorization: Bearer <token>` header.
+### Protected Endpoints (JWT Required)
 
 | Method | Endpoint | Description |
 |---|---|---|
-| `POST` | `/likes` | Add a reaction to a post or comment |
-| `DELETE` | `/likes?targetId=&targetType=` | Remove your reaction (unlike) |
-| `PUT` | `/likes/change` | Change your existing reaction type |
-| `GET` | `/likes/has?targetId=&targetType=` | Check if you have already reacted |
-| `GET` | `/likes/target?targetId=&targetType=` | Get all reactions on a target |
-| `GET` | `/likes/user/{userId}` | Get all reactions made by a user |
-| `GET` | `/likes/count?targetId=&targetType=` | Total reaction count on a target |
-| `GET` | `/likes/count/type?targetId=&targetType=&reactionType=` | Count of one specific reaction type |
-| `GET` | `/likes/summary?targetId=&targetType=` | Full emoji reaction bar summary |
+| `POST` | `/follows/{followeeId}` | Follow a user |
+| `DELETE` | `/follows/{followeeId}` | Unfollow a user |
+| `GET` | `/follows/check/{followeeId}` | Is current user following this user? |
+| `GET` | `/follows/suggestions` | Get suggested users to follow |
+
+### Public Endpoints (No JWT Required)
+
+| Method | Endpoint | Description |
+|---|---|---|
+| `GET` | `/follows/{userId}/followers` | Get list of followers |
+| `GET` | `/follows/{userId}/following` | Get list of users being followed |
+| `GET` | `/follows/{userId}/follower-count` | Get follower count only |
+| `GET` | `/follows/{userId}/following-count` | Get following count only |
+| `GET` | `/follows/{userId}/counts` | Get both counts in one call |
+| `GET` | `/follows/{userId}/mutual` | Get mutual connections (userIds) |
+| `GET` | `/follows/{userId}/followee-ids` | Get followee IDs (used by post-service for news feed) |
 
 ### Request / Response Examples
 
-**POST /likes** — React to a post
+**POST /follows/7** — Follow user 7
 ```json
-// Request Body
-{
-  "targetId": 1,
-  "targetType": "POST",
-  "reactionType": "LOVE"
-}
+// No request body needed — followerId comes from JWT
 
 // Response 201 Created
 {
   "success": true,
-  "message": "Reaction added",
+  "message": "Followed successfully",
   "data": {
-    "likeId": 1,
-    "userId": 5,
-    "targetId": 1,
-    "targetType": "POST",
-    "reactionType": "LOVE",
+    "followId": 1,
+    "followerId": 5,
+    "followeeId": 7,
+    "status": "ACTIVE",
     "createdAt": "2026-04-19T10:00:00"
   }
 }
 ```
 
-**PUT /likes/change** — Change reaction
-```json
-// Request Body
-{
-  "targetId": 1,
-  "targetType": "POST",
-  "newReactionType": "HAHA"
-}
-```
-
-**GET /likes/summary?targetId=1&targetType=POST** — Emoji reaction bar
+**GET /follows/5/counts** — Both counts in one call
 ```json
 {
   "success": true,
   "data": {
-    "reactions": {
-      "LIKE": 12,
-      "LOVE": 5,
-      "HAHA": 2,
-      "WOW": 1,
-      "SAD": 0,
-      "ANGRY": 0
-    },
-    "total": 20
+    "followerCount": 120,
+    "followingCount": 85
   }
+}
+```
+
+**GET /follows/5/followee-ids** — Lightweight list for feed generation
+```json
+{
+  "success": true,
+  "data": [7, 12, 34, 56, 89]
 }
 ```
 
@@ -198,24 +183,10 @@ All endpoints require `Authorization: Bearer <token>` header.
 
 ## 🔒 Security
 
-- All 9 endpoints are **protected by JWT**.
-- `JwtAuthenticationFilter` validates the Bearer token on every request and sets `requestingUserId` as a request attribute.
-- Controllers always extract `userId` from the JWT attribute — **never from the request body** — to prevent impersonation attacks.
-- Feign inter-service calls to `post-service` and `comment-service` forward the JWT header automatically.
-
----
-
-## 🔄 Inter-Service Communication
-
-| Service | Feign Client | Purpose |
-|---|---|---|
-| `post-service` (port 8083) | `PostServiceClient` | Validate post exists before reacting; update likesCount counter |
-| `comment-service` (port 8082) | `CommentServiceClient` | Validate comment exists before reacting; update likesCount counter |
-
-Feign timeout config:
-- Connect timeout: `3000ms`
-- Read timeout: `5000ms`
-- Service resolution: via Eureka (`lb://service-name`) — no hardcoded URLs
+- **Protected endpoints** (`POST`, `DELETE`, `GET /check`, `GET /suggestions`) require `Authorization: Bearer <token>`.
+- **Public endpoints** (all `GET /{userId}/...`) are open — no JWT needed, so guest users can view public profiles.
+- `JwtAuthenticationFilter` validates the Bearer token and sets `requestingUserId` as a request attribute.
+- `followerId` is always extracted from the JWT — **never from the request body** — to prevent impersonation.
 
 ---
 
@@ -227,12 +198,11 @@ Feign timeout config:
 - MySQL running on port 3306
 - Eureka Server running on port 8761
 - Config Server running on port 8888 *(or skip — it's marked `optional`)*
-- `post-service` and `comment-service` running *(for Feign calls)*
 
 ### Steps
 ```bash
-# 1. Navigate to like-service folder
-cd like-service
+# 1. Navigate to follow-service folder
+cd follow-service
 
 # 2. Set environment variables
 export DB_USERNAME=root
@@ -248,12 +218,12 @@ mvn spring-boot:run
 
 ### Verify it's running
 ```
-GET http://localhost:8084/api/v1/actuator/health
+GET http://localhost:8085/api/v1/actuator/health
 → { "status": "UP" }
 ```
 
-**Swagger UI:** `http://localhost:8084/api/v1/swagger-ui.html`
-**API Docs JSON:** `http://localhost:8084/api/v1/api-docs`
+**Swagger UI:** `http://localhost:8085/api/v1/swagger-ui.html`
+**API Docs JSON:** `http://localhost:8085/api/v1/api-docs`
 
 ---
 
@@ -263,19 +233,18 @@ GET http://localhost:8084/api/v1/actuator/health
 mvn test
 ```
 
-Test groups in `LikeServiceImplTest.java`:
+Test groups in `FollowServiceImplTest.java`:
 
 | Nested Class | What It Tests |
 |---|---|
-| `LikeTargetTests` | Add reactions — happy path + AlreadyLikedException |
-| `UnlikeTargetTests` | Remove reactions — happy path + LikeNotFoundException |
-| `HasLikedTests` | Boolean check for existing reaction |
-| `GetLikesByTargetTests` | Fetch all reactions on a target |
-| `GetLikesByUserTests` | Fetch all reactions by a user |
-| `GetLikeCountTests` | Total count on a target |
-| `GetLikeCountByTypeTests` | Count for one specific reaction type |
-| `GetReactionSummaryTests` | Full emoji summary map |
-| `ChangeReactionTests` | Update reaction type (atomic delete + insert) |
+| `FollowTests` | Follow a user — happy path, self-follow error, duplicate error |
+| `UnfollowTests` | Unfollow — happy path + FollowNotFoundException |
+| `IsFollowingTests` | Boolean check for existing follow relationship |
+| `FollowListTests` | getFollowers() and getFollowing() list retrieval |
+| `FollowCountTests` | getFollowerCount(), getFollowingCount(), getFollowCounts() |
+| `MutualFollowsTests` | getMutualFollows() — users who follow each other |
+| `SuggestedUsersTests` | getSuggestedUsers() — second-degree connections |
+| `FolloweeIdsTests` | getFolloweeIds() — lightweight IDs for news feed |
 
 ---
 
@@ -283,29 +252,32 @@ Test groups in `LikeServiceImplTest.java`:
 
 | Endpoint | URL |
 |---|---|
-| Health | `GET http://localhost:8084/api/v1/actuator/health` |
-| Info | `GET http://localhost:8084/api/v1/actuator/info` |
-| Metrics | `GET http://localhost:8084/api/v1/actuator/metrics` |
+| Health | `GET http://localhost:8085/api/v1/actuator/health` |
+| Info | `GET http://localhost:8085/api/v1/actuator/info` |
+| Metrics | `GET http://localhost:8085/api/v1/actuator/metrics` |
 
 ---
 
 ## 🧩 Enum Reference
 
-### ReactionType
-| Value | Emoji |
+### FollowStatus
+| Value | Meaning |
 |---|---|
-| `LIKE` | 👍 |
-| `LOVE` | ❤️ |
-| `HAHA` | 😂 |
-| `WOW` | 😮 |
-| `SAD` | 😢 |
-| `ANGRY` | 😡 |
+| `ACTIVE` | Follow accepted immediately (public account) |
+| `PENDING` | Awaiting followee approval (private account) |
 
-### TargetType
-| Value | Applies To |
+---
+
+## 💡 Key Business Rules
+
+| Rule | Behavior |
 |---|---|
-| `POST` | A social media post |
-| `COMMENT` | A comment on a post |
+| Self-follow | Rejected with `SelfFollowException` (400) |
+| Duplicate follow | Rejected with `AlreadyFollowingException` (409) |
+| Unfollow when not following | Rejected with `FollowNotFoundException` (404) |
+| Suggested users | Based on second-degree connections (friends of friends not yet followed) |
+| Mutual connections | Users where both `(A→B)` and `(B→A)` follow records exist with status ACTIVE |
+| Followee IDs endpoint | Consumed by `post-service` to build the personalized news feed |
 
 ---
 
@@ -314,10 +286,8 @@ Test groups in `LikeServiceImplTest.java`:
 Start services in this order to avoid connection errors:
 
 ```
-1. config-server   (port 8888)
-2. eureka-server   (port 8761)
-3. auth-service    (port 8081)
-4. post-service    (port 8083)
-5. comment-service (port 8082)
-6. like-service    (port 8084)  ← this service
+1. config-server    (port 8888)
+2. eureka-server    (port 8761)
+3. auth-service     (port 8081)
+4. follow-service   (port 8085)  ← this service
 ```
