@@ -1,0 +1,62 @@
+spring:
+  application:
+    name: follow-service   # Microservice name registered in Eureka & used in logs
+
+  config:
+    import: optional:configserver:http://localhost:8888   # Fetch from Config Server (optional in dev)
+
+  datasource:
+    url: jdbc:mysql://localhost:3306/connectsphere_follow?createDatabaseIfNotExist=true&useSSL=false&serverTimezone=Asia/Kolkata
+    username: ${DB_USERNAME}
+    password: ${DB_PASSWORD}
+    driver-class-name: com.mysql.cj.jdbc.Driver
+
+  jpa:
+    hibernate:
+      ddl-auto: update   # Auto-update DB schema on startup
+    show-sql: true
+    properties:
+      hibernate:
+        format_sql: true
+
+server:
+  port: 8085   # follow-service runs on port 8085
+  servlet:
+    context-path: /api/v1   # All endpoints prefixed with /api/v1
+
+eureka:
+  client:
+    service-url:
+      defaultZone: http://localhost:8761/eureka/
+    fetch-registry: true
+    register-with-eureka: true
+  instance:
+    prefer-ip-address: true
+    instance-id: ${spring.application.name}:${server.port}
+
+# JWT secret must match auth-service exactly
+jwt:
+  secret: ${JWT_SECRET}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics
+  endpoint:
+    health:
+      show-details: always
+
+logging:
+  level:
+    com.connectsphere.follow: DEBUG
+    org.springframework.security: INFO
+    org.hibernate.SQL: DEBUG
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"
+
+springdoc:
+  api-docs:
+    path: /api-docs
+  swagger-ui:
+    path: /swagger-ui.html
