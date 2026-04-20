@@ -1,6 +1,8 @@
 package com.connectsphere.like.client;
 
+import com.connectsphere.like.dto.PostApiResponse;
 import org.springframework.cloud.openfeign.FeignClient;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 
@@ -37,4 +39,7 @@ public interface PostServiceClient {
      */
     @PostMapping("/posts/{postId}/likes/decrement")
     void decrementLikeCount(@PathVariable("postId") Integer postId);
+
+    @GetMapping("/posts/{postId}")
+    PostApiResponse getPostById(@PathVariable("postId") Integer postId);
 }

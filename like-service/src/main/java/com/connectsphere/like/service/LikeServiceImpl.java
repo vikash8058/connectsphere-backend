@@ -8,10 +8,13 @@ import com.connectsphere.like.exception.AlreadyLikedException;
 import com.connectsphere.like.exception.LikeNotFoundException;
 import com.connectsphere.like.client.CommentServiceClient;
 import com.connectsphere.like.client.PostServiceClient;
+import com.connectsphere.like.messaging.NotificationEventMessage;
 import com.connectsphere.like.repository.LikeRepository;
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.amqp.rabbit.core.RabbitTemplate;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import java.util.LinkedHashMap;
@@ -50,6 +53,13 @@ public class LikeServiceImpl implements LikeService {
     private final LikeRepository likeRepository;
     private final PostServiceClient postServiceClient;       // Feign → post-service
     private final CommentServiceClient commentServiceClient; // Feign → comment-service
+    private final RabbitTemplate rabbitTemplate;
+
+    @Value("${notification.rabbitmq.exchange}")
+    private String notificationExchange;
+
+    @Value("${notification.rabbitmq.routing-key}")
+    private String notificationRoutingKey;
 
     // LIKE TARGET
 
@@ -84,6 +94,8 @@ public class LikeServiceImpl implements LikeService {
 
         // Notify target service to increment its likesCount counter via Feign
         syncCounterIncrement(request.getTargetType(), request.getTargetId());
+
+        publishLikeNotification(userId, request.getTargetId(), request.getTargetType());
 
         return ApiResponseDTO.success("Reaction added successfully", toDTO(saved));
     }
@@ -283,5 +295,45 @@ public class LikeServiceImpl implements LikeService {
                 .reactionType(like.getReactionType())
                 .createdAt(like.getCreatedAt())
                 .build();
+    }
+
+    /**
+     * Publish LIKE notification event to RabbitMQ.
+     * notification-service consumes this and saves + emails the recipient.
+     * Fire-and-forget — like is already saved, this is best-effort.
+     */
+    private void publishLikeNotification(Integer actorId, Integer targetId, TargetType targetType) {
+        try {
+            Integer recipientId = null;
+
+            if (targetType == TargetType.POST) {
+                PostApiResponse response = postServiceClient.getPostById(targetId);
+                if (response != null && response.getData() != null) {
+                    recipientId = response.getData().getAuthorId();
+                }
+            }
+            // COMMENT target type: recipientId resolution can be added later
+
+            if (recipientId == null) {
+                log.warn("Could not resolve recipientId for LIKE on {} id={}, skipping notification",
+                        targetType, targetId);
+                return;
+            }
+
+            NotificationEventMessage message = NotificationEventMessage.builder()
+                    .recipientId(recipientId)   // ← NOW SET
+                    .actorId(actorId)
+                    .type("LIKE")
+                    .message("Someone liked your " + targetType.name().toLowerCase())
+                    .targetId(targetId)
+                    .targetType(targetType.name())
+                    .deepLinkUrl("/" + targetType.name().toLowerCase() + "s/" + targetId)
+                    .build();
+
+            rabbitTemplate.convertAndSend(notificationExchange, notificationRoutingKey, message);
+            log.debug("LIKE notification published for targetId: {}", targetId);
+        } catch (Exception e) {
+            log.warn("Failed to publish LIKE notification: {}", e.getMessage());
+        }
     }
 }

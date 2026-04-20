@@ -18,6 +18,12 @@ spring:
     properties:
       hibernate:
         format_sql: true
+  rabbitmq:
+    host: ${RABBITMQ_HOST}
+    port: ${RABBITMQ_PORT}
+    username: ${RABBITMQ_USERNAME}
+    password: ${RABBITMQ_PASSWORD}
+    virtual-host: /
 
 server:
   port: 8085   # follow-service runs on port 8085
@@ -60,3 +66,10 @@ springdoc:
     path: /api-docs
   swagger-ui:
     path: /swagger-ui.html
+
+
+# RabbitMQ exchange/routing-key — must match notification-service config
+notification:
+  rabbitmq:
+    exchange: connectsphere.notification.exchange
+    routing-key: notification.create

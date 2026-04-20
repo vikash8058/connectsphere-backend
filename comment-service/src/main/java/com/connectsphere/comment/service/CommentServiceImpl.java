@@ -7,11 +7,14 @@ import com.connectsphere.comment.exception.CommentNotFoundException;
 import com.connectsphere.comment.exception.PostNotFoundException;
 import com.connectsphere.comment.exception.PostServiceUnavailableException;
 import com.connectsphere.comment.exception.UnauthorizedActionException;
+import com.connectsphere.comment.messaging.NotificationEventMessage;
 import com.connectsphere.comment.repository.CommentRepository;
 import feign.FeignException;
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.amqp.rabbit.core.RabbitTemplate;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
@@ -41,6 +44,14 @@ public class CommentServiceImpl implements CommentService {
 
     private final CommentRepository commentRepository;
     private final PostClient postClient;  // FeignClient
+    // ADD at top
+    private final RabbitTemplate rabbitTemplate;
+
+    @Value("${notification.rabbitmq.exchange}")
+    private String notificationExchange;
+
+    @Value("${notification.rabbitmq.routing-key}")
+    private String notificationRoutingKey;
 
     // ── ADD COMMENT ──
 
@@ -52,7 +63,7 @@ public class CommentServiceImpl implements CommentService {
                 request.getPostId(), authorId);
 
         // STEP 1 — Verify post exists in post-service before allowing comment
-        verifyPostExists(request.getPostId());
+        Integer postAuthorId = verifyPostExists(request.getPostId());
 
         // STEP 2 — If this is a reply, validate parent comment exists and is not deleted
         if (request.getParentCommentId() != null) {
@@ -77,6 +88,7 @@ public class CommentServiceImpl implements CommentService {
 
         // STEP 4 — Notify post-service to increment commentsCount
         notifyPostServiceIncrement(request.getPostId());
+        publishCommentNotification(authorId, postAuthorId, request.getPostId(), request.getParentCommentId());
 
         return ApiResponseDTO.success("Comment added successfully", toDTO(saved));
     }
@@ -224,7 +236,7 @@ public class CommentServiceImpl implements CommentService {
      *
      * Also blocks comments on soft-deleted posts (isDeleted = true).
      */
-    private void verifyPostExists(Integer postId) {
+    private Integer verifyPostExists(Integer postId) {
         try {
             log.debug("Verifying post exists: postId={}", postId);
 
@@ -240,6 +252,9 @@ public class CommentServiceImpl implements CommentService {
             }
 
             log.debug("Post verified successfully: postId={}", postId);
+
+            // Return the post's authorId so addComment() can route the notification correctly
+            return response.getData().getAuthorId();
 
         } catch (PostNotFoundException e) {
             throw e;
@@ -346,5 +361,36 @@ public class CommentServiceImpl implements CommentService {
                 .createdAt(comment.getCreatedAt())
                 .updatedAt(comment.getUpdatedAt())
                 .build();
+    }
+
+    /**
+     * Publish COMMENT or REPLY notification to RabbitMQ.
+     * If parentCommentId is null → it is a top-level COMMENT on a post.
+     * If parentCommentId is set  → it is a REPLY to another comment.
+     */
+    private void publishCommentNotification(Integer actorId,Integer recipientId,
+                                            Integer postId,
+                                            Integer parentCommentId) {
+        try {
+            String type = (parentCommentId != null) ? "REPLY" : "COMMENT";
+            String message = (parentCommentId != null)
+                    ? "Someone replied to your comment"
+                    : "Someone commented on your post";
+
+            NotificationEventMessage event = NotificationEventMessage.builder()
+                    .recipientId(recipientId)
+                    .actorId(actorId)
+                    .type(type)
+                    .message(message)
+                    .targetId(postId)
+                    .targetType("POST")
+                    .deepLinkUrl("/posts/" + postId)
+                    .build();
+
+            rabbitTemplate.convertAndSend(notificationExchange, notificationRoutingKey, event);
+            log.debug("{} notification published for postId: {}", type, postId);
+        } catch (Exception e) {
+            log.warn("Failed to publish comment notification: {}", e.getMessage());
+        }
     }
 }

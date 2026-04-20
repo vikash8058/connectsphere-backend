@@ -8,11 +8,14 @@ import com.connectsphere.follow.exception.AlreadyFollowingException;
 import com.connectsphere.follow.exception.FollowNotFoundException;
 import com.connectsphere.follow.exception.SelfFollowException;
 import com.connectsphere.follow.exception.UserNotFoundException;
+import com.connectsphere.follow.message.NotificationEventMessage;
 import com.connectsphere.follow.repository.FollowRepository;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.amqp.rabbit.core.RabbitTemplate;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.web.context.request.RequestContextHolder;
 import org.springframework.web.context.request.ServletRequestAttributes;
@@ -42,6 +45,14 @@ public class FollowServiceImpl implements FollowService {
 
     private final FollowRepository followRepository;
     private final AuthServiceClient authServiceClient;
+    // ADD at top of class
+    private final RabbitTemplate rabbitTemplate;
+
+    @Value("${notification.rabbitmq.exchange}")
+    private String notificationExchange;
+
+    @Value("${notification.rabbitmq.routing-key}")
+    private String notificationRoutingKey;
 
     // FOLLOW
 
@@ -83,6 +94,7 @@ public class FollowServiceImpl implements FollowService {
                 .build();
 
         Follow saved = followRepository.save(follow);
+        publishFollowNotification(followerId, followeeId);
         log.info("Follow saved with followId: {}", saved.getFollowId());
 
         return ApiResponseDTO.success("Followed successfully", toDTO(saved));
@@ -232,5 +244,27 @@ public class FollowServiceImpl implements FollowService {
                 .status(follow.getStatus())
                 .createdAt(follow.getCreatedAt())
                 .build();
+    }
+
+    /**
+     * Publish FOLLOW notification to RabbitMQ.
+     * Recipient = followeeId (person who got followed).
+     * Actor     = followerId (person who followed).
+     */
+    private void publishFollowNotification(Integer followerId, Integer followeeId) {
+        try {
+            NotificationEventMessage message = NotificationEventMessage.builder()
+                    .recipientId(followeeId)
+                    .actorId(followerId)
+                    .type("FOLLOW")
+                    .message("Someone started following you")
+                    .deepLinkUrl("/profile/" + followerId)
+                    .build();
+
+            rabbitTemplate.convertAndSend(notificationExchange, notificationRoutingKey, message);
+            log.debug("FOLLOW notification published for followeeId: {}", followeeId);
+        } catch (Exception e) {
+            log.warn("Failed to publish FOLLOW notification: {}", e.getMessage());
+        }
     }
 }

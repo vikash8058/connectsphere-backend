@@ -19,6 +19,13 @@ spring:
       hibernate:
         format_sql: true
 
+  rabbitmq:
+    host: ${RABBITMQ_HOST}
+    port: ${RABBITMQ_PORT}
+    username: ${RABBITMQ_USERNAME}
+    password: ${RABBITMQ_PASSWORD}
+    virtual-host: /
+
 server:
   port: 8084
   servlet:
@@ -42,11 +49,11 @@ jwt:
 feign:
   client:
     config:
-      post-service:              # matches @FeignClient(name = "post-service")
+      post-service:
         connect-timeout: 3000
         read-timeout: 5000
         logger-level: BASIC
-      comment-service:           # matches @FeignClient(name = "comment-service")
+      comment-service:
         connect-timeout: 3000
         read-timeout: 5000
         logger-level: BASIC
@@ -65,7 +72,7 @@ logging:
     com.connectsphere.like: DEBUG
     org.springframework.security: INFO
     org.hibernate.SQL: DEBUG
-    com.connectsphere.like.feign: DEBUG   # Shows Feign request/response logs
+    com.connectsphere.like.feign: DEBUG
   pattern:
     console: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"
 
@@ -74,3 +81,9 @@ springdoc:
     path: /api-docs
   swagger-ui:
     path: /swagger-ui.html
+
+# RabbitMQ exchange/routing-key — must match notification-service config
+notification:
+  rabbitmq:
+    exchange: connectsphere.notification.exchange
+    routing-key: notification.create

@@ -1,12 +1,12 @@
 spring:
   application:
-    name: comment-service
+    name: notification-service
 
   config:
     import: optional:configserver:http://localhost:8888
 
   datasource:
-    url: jdbc:mysql://localhost:3306/connectsphere_comment?createDatabaseIfNotExist=true&useSSL=false&serverTimezone=Asia/Kolkata
+    url: jdbc:mysql://localhost:3306/connectsphere_notification?createDatabaseIfNotExist=true&useSSL=false&serverTimezone=Asia/Kolkata
     username: ${DB_USERNAME}
     password: ${DB_PASSWORD}
     driver-class-name: com.mysql.cj.jdbc.Driver
@@ -18,6 +18,8 @@ spring:
     properties:
       hibernate:
         format_sql: true
+
+  # RabbitMQ Configuration — Async notification dispatch
   rabbitmq:
     host: ${RABBITMQ_HOST}
     port: ${RABBITMQ_PORT}
@@ -25,8 +27,21 @@ spring:
     password: ${RABBITMQ_PASSWORD}
     virtual-host: /
 
+  # Email Configuration — for high-priority event alerts
+  mail:
+    host: ${MAIL_HOST:smtp.gmail.com}
+    port: ${MAIL_PORT:587}
+    username: ${MAIL_USERNAME}
+    password: ${MAIL_PASSWORD}
+    properties:
+      mail:
+        smtp:
+          auth: true
+          starttls:
+            enable: true
+
 server:
-  port: 8083
+  port: 8086
   servlet:
     context-path: /api/v1
 
@@ -43,19 +58,27 @@ eureka:
 jwt:
   secret: ${JWT_SECRET}
 
-# post-service base URL — used by PostClient FeignClient
-post-service:
-  base-url: http://localhost:8082/api/v1
+# RabbitMQ Queue/Exchange names — used by RabbitMQConfig and listener
+notification:
+  rabbitmq:
+    exchange: connectsphere.notification.exchange
+    queue: connectsphere.notification.queue
+    routing-key: notification.create
+    bulk-queue: connectsphere.notification.bulk.queue
+    bulk-routing-key: notification.bulk
 
-# ── ADDED: Feign client configuration ──
+  # Email sender address
+  mail:
+    from: ${MAIL_FROM:noreply@connectsphere.com}
+
+# Feign client configuration — same pattern as comment-service
 feign:
   client:
     config:
-      post-service:
+      auth-service:
         connectTimeout: 3000    # 3 seconds to establish connection
         readTimeout: 5000       # 5 seconds to wait for response
         loggerLevel: BASIC      # logs method, URL, status code, time taken
-
 
 management:
   endpoints:
@@ -68,10 +91,11 @@ management:
 
 logging:
   level:
-    com.connectsphere.comment: DEBUG
+    com.connectsphere.notification: DEBUG
+    com.connectsphere.notification.client: DEBUG   # logs FeignClient calls
     org.springframework.security: INFO
     org.hibernate.SQL: DEBUG
-    com.connectsphere.comment.client: DEBUG   # ← ADDED: logs FeignClient calls
+    org.springframework.amqp: INFO
   pattern:
     console: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"
 
@@ -80,10 +104,3 @@ springdoc:
     path: /api-docs
   swagger-ui:
     path: /swagger-ui.html
-
-
-# RabbitMQ exchange/routing-key — must match notification-service config
-notification:
-  rabbitmq:
-    exchange: connectsphere.notification.exchange
-    routing-key: notification.create
