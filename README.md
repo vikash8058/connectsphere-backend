@@ -1,485 +1,330 @@
-# Notification Service — ConnectSphere
+# Media Service — ConnectSphere
 
-Complete documentation for the `notification-service` microservice.
-
----
-
-## Table of Contents
-
-1. [Overview](#1-overview)
-2. [Architecture](#2-architecture)
-3. [How It Works — End to End](#3-how-it-works--end-to-end)
-4. [What Gets Stored](#4-what-gets-stored)
-5. [Email Rules](#5-email-rules)
-6. [REST API Endpoints](#6-rest-api-endpoints)
-7. [RabbitMQ Configuration](#7-rabbitmq-configuration)
-8. [Service Classes](#8-service-classes)
-9. [Publisher Services](#9-publisher-services)
-10. [Frontend Integration](#10-frontend-integration)
-11. [Bug Fixes Applied](#11-bug-fixes-applied)
-12. [Non-Functional Notes](#12-non-functional-notes)
+Microservice responsible for all media upload and ephemeral story operations in the ConnectSphere social platform. Handles file upload simulation (CDN URL generation), media-to-post linking, soft deletion, and the full 24-hour story lifecycle including scheduled expiry.
 
 ---
 
-## 1. Overview
+## Tech Stack
 
-`notification-service` is the single service responsible for storing and serving all in-app notifications on ConnectSphere. It listens to a RabbitMQ queue, saves notification rows to its own MySQL database, and exposes REST endpoints for the frontend to read, mark as read, and delete notifications.
-
-**What it does:**
-- Receives events from `like-service`, `comment-service`, and `follow-service` via RabbitMQ
-- Saves one DB row per event (in-app notification)
-- Serves the unread badge count to the frontend
-- Sends email **only** on high-priority events (follower milestones)
-
-**What it does NOT do:**
-- Send email on every like, comment, reply, or mention
-- Block or slow down the publisher services (fully async)
-
----
-
-## 2. Architecture
-
-```
-like-service      ──┐
-comment-service   ──┼──▶  RabbitMQ Queue  ──▶  NotificationListener  ──▶  DB
-follow-service    ──┘                               (notification-service)
-```
-
-- **Publisher services** call `rabbitTemplate.convertAndSend()` — fire and forget
-- **RabbitMQ** queues the message, retries on failure
-- **NotificationListener** deserializes JSON and calls `createNotification()`
-- **DB** stores one row per notification event
-- **Frontend** polls REST endpoints for badge count and notification list
-
-Base package: `com.connectsphere.notification`
-Port: configured in `application.yml`
-Context path: `/api/v1`
+| Layer | Technology |
+|---|---|
+| Language | Java 17 |
+| Framework | Spring Boot 3.2.0 |
+| Security | Spring Security + JWT |
+| Database | MySQL 8 + Spring Data JPA / Hibernate |
+| File Upload | Spring Multipart (`MultipartFile`) |
+| Service Discovery | Netflix Eureka Client |
+| Config Management | Spring Cloud Config |
+| Scheduling | Spring `@Scheduled` (story expiry) |
+| Documentation | SpringDoc OpenAPI (Swagger UI) |
+| Monitoring | Spring Boot Actuator |
+| Build Tool | Maven |
+| AOP Logging | Spring AOP |
 
 ---
 
-## 3. How It Works — End to End
-
-### When a user likes a post
+## Port & Context Path
 
 ```
-1. like-service.likeTarget()
-      → saves Like to like_db
-      → publishLikeNotification()
-            → rabbitTemplate.convertAndSend(exchange, routingKey, message)
-
-2. RabbitMQ delivers message to connectsphere.notification.queue
-
-3. NotificationListener.handleNotificationEvent(message)
-      → builds CreateNotificationRequestDTO
-      → calls notificationService.createNotification()
-
-4. NotificationServiceImpl.createNotification()
-      → self-notification check  (actor == recipient? skip)
-      → deduplication check      (same actor+target+type already exists? skip)
-      → fetch actor name from auth-service  (e.g. "Rahul Kumar")
-      → fetch recipient email from auth-service
-      → build message: "Rahul Kumar liked your post"
-      → save Notification row to DB
-      → isHighPriorityEmailEvent(LIKE) → false → NO email
-
-5. Done. One row in notifications table.
-```
-
-### When a user comments on a post
-
-```
-1. comment-service.addComment()
-      → verifyPostExists() → returns postAuthorId  ← (fixed bug)
-      → saves Comment to comment_db
-      → publishCommentNotification(actorId, postAuthorId, postId, parentCommentId)
-            → type = "COMMENT" if top-level, "REPLY" if parentCommentId != null
-            → rabbitTemplate.convertAndSend(...)
-
-2. → RabbitMQ → NotificationListener → createNotification()
-      → saves row, type = COMMENT or REPLY
-      → isHighPriorityEmailEvent(COMMENT/REPLY) → false → NO email
-```
-
-### When a user follows another user
-
-```
-1. follow-service.follow()
-      → saves Follow to follow_db
-      → publishFollowNotification(followerId, followeeId)
-            → rabbitTemplate.convertAndSend(...)
-
-2. → RabbitMQ → NotificationListener → createNotification()
-      → saves row, type = FOLLOW
-      → isHighPriorityEmailEvent(FOLLOW)
-            → isFollowerMilestone(recipientId)
-                  → countByRecipientIdAndType(recipientId, FOLLOW)
-                  → count == 100 or 500 or 1000 or 5000 or 10000?
-                        YES → sendEmailAlertAsync()  "🎉 Milestone reached!"
-                        NO  → no email
+Port         : 8085
+Context Path : /api/v1
+Base URL     : http://localhost:8085/api/v1
 ```
 
 ---
 
-## 4. What Gets Stored
+## Database
 
-Every notification is one row in the `notifications` table:
+```
+Database : connectsphere_media
+Tables   : media, stories
+```
+
+### media table
 
 | Column | Type | Description |
 |---|---|---|
-| `notification_id` | INT PK | Auto-generated |
-| `recipient_id` | INT | User who receives the notification |
-| `actor_id` | INT | User who triggered the event |
-| `type` | ENUM | `LIKE`, `COMMENT`, `REPLY`, `FOLLOW`, `MENTION` |
-| `message` | VARCHAR | Human-readable e.g. "Rahul Kumar liked your post" |
-| `target_id` | INT | The postId or commentId the event is about |
-| `target_type` | VARCHAR | `POST` or `COMMENT` |
-| `deep_link_url` | VARCHAR | e.g. `/posts/42` — where to navigate on click |
-| `is_read` | BOOLEAN | `false` when created, `true` after user reads |
-| `created_at` | DATETIME | Auto-set on insert |
+| media_id | INT (PK, AI) | Primary key |
+| uploader_id | INT | References users.user_id in auth-service (no DB FK) |
+| url | VARCHAR(1000) | Full CDN URL of the uploaded file |
+| media_type | ENUM | IMAGE / VIDEO |
+| size_kb | BIGINT | File size in kilobytes |
+| mime_type | VARCHAR(50) | Actual MIME type (image/jpeg, image/png, image/webp, video/mp4) |
+| linked_post_id | INT (nullable) | Post ID this media is attached to (set after post creation) |
+| is_deleted | BOOLEAN | Soft delete flag |
+| uploaded_at | DATETIME | Auto-set on INSERT |
+
+### stories table
+
+| Column | Type | Description |
+|---|---|---|
+| story_id | INT (PK, AI) | Primary key |
+| author_id | INT | References users.user_id in auth-service (no DB FK) |
+| media_url | VARCHAR(1000) | CDN URL of the story media |
+| caption | VARCHAR(500) | Optional text caption |
+| media_type | ENUM | IMAGE / VIDEO |
+| views_count | INT | View counter (excludes author self-views) |
+| expires_at | DATETIME | `created_at + 24 hours` — set at creation |
+| created_at | DATETIME | Auto-set on INSERT |
+| is_active | BOOLEAN | `false` after expiry or manual deletion |
 
 ---
 
-## 5. Email Rules
+## Environment Variables
 
-Per case study spec (section 2.5):
-> *"Email alerts are sent for high-priority events (e.g. account actions, new follower milestones)."*
-
-| Notification Type | Email Sent? | Reason |
-|---|---|---|
-| `LIKE` | ❌ Never | High-volume — 1000 likes = 1000 emails = inbox spam |
-| `COMMENT` | ❌ Never | High-volume social interaction |
-| `REPLY` | ❌ Never | High-volume social interaction |
-| `MENTION` | ❌ Never | High-volume social interaction |
-| `FOLLOW` (regular) | ❌ No | In-app only |
-| `FOLLOW` (milestone) | ✅ Yes | Only at 100, 500, 1000, 5000, 10000 followers |
-| Admin broadcast | ✅ Yes | Via `/notifications/bulk` endpoint explicitly |
-| Account actions | ✅ Yes | Via `/notifications/email-alert` endpoint explicitly |
-
-### Milestone thresholds
-
-```java
-return followerCount == 100  ||
-       followerCount == 500  ||
-       followerCount == 1000 ||
-       followerCount == 5000 ||
-       followerCount == 10000;
+```env
+DB_USERNAME=your_mysql_username
+DB_PASSWORD=your_mysql_password
+JWT_SECRET=your_jwt_secret_key   # Must match auth-service exactly
 ```
 
-Milestone email subject: `"🎉 Milestone reached! You have a new follower — ConnectSphere"`
+---
+
+## Project Structure
+
+```
+media-service/
+├── src/main/java/com/connectsphere/media/
+│   ├── MediaServiceApplication.java
+│   ├── aop/
+│   │   └── LoggingAspect.java               # Cross-cutting logs for all layers
+│   ├── config/
+│   │   ├── ApplicationConfig.java
+│   │   └── SecurityConfig.java              # JWT filter + endpoint security rules
+│   ├── controller/
+│   │   └── MediaResource.java               # REST endpoints (media + stories)
+│   ├── dto/
+│   │   ├── ApiResponseDTO.java
+│   │   ├── CreateStoryRequestDTO.java
+│   │   ├── MediaResponseDTO.java
+│   │   └── StoryResponseDTO.java
+│   ├── entity/
+│   │   ├── Media.java
+│   │   ├── Story.java
+│   │   └── MediaType.java                   # IMAGE, VIDEO
+│   ├── exception/
+│   │   ├── GlobalExceptionHandler.java
+│   │   ├── MediaNotFoundException.java
+│   │   ├── StoryNotFoundException.java
+│   │   ├── UnauthorizedActionException.java
+│   │   └── UnsupportedMediaTypeException.java
+│   ├── repository/
+│   │   ├── MediaRepository.java
+│   │   └── StoryRepository.java
+│   ├── scheduler/
+│   │   └── StoryExpiryScheduler.java        # Runs every 5 min, expires 24h stories
+│   ├── security/
+│   │   └── JwtAuthenticationFilter.java
+│   └── service/
+│       ├── MediaService.java
+│       └── MediaServiceImpl.java
+└── src/main/resources/
+    └── application.yml
+```
 
 ---
 
-## 6. REST API Endpoints
+## API Endpoints
 
-Base path: `GET /api/v1/notifications/...`
+### Media Endpoints (all require JWT)
 
-### User endpoints (JWT required)
-
-| Method | Endpoint | Description |
+| Method | URL | Description |
 |---|---|---|
-| `GET` | `/recipient/{userId}` | Get all notifications for a user |
-| `GET` | `/recipient/{userId}?isRead=false` | Get only unread notifications |
-| `GET` | `/recipient/{userId}/unread-count` | Get unread count for badge |
-| `POST` | `/{notificationId}/read` | Mark one notification as read |
-| `POST` | `/recipient/{userId}/read-all` | Mark all notifications as read |
-| `DELETE` | `/{notificationId}` | Delete one notification |
+| POST | `/api/v1/media/upload` | Upload image (JPEG/PNG/WebP) or video (MP4). Returns CDN URL. |
+| GET | `/api/v1/media/{mediaId}` | Get media metadata by ID |
+| GET | `/api/v1/media/post/{postId}` | Get all media linked to a post |
+| GET | `/api/v1/media/uploader/{uploaderId}` | Get all media uploaded by a user |
+| DELETE | `/api/v1/media/{mediaId}` | Soft-delete media (uploader or ADMIN/MODERATOR) |
+| PATCH | `/api/v1/media/{mediaId}/link/{postId}` | Link uploaded media to a post |
 
-### Admin endpoints (ROLE_ADMIN required)
+### Internal Media Endpoint (inter-service, JWT required)
 
-| Method | Endpoint | Description |
+| Method | URL | Description |
 |---|---|---|
-| `POST` | `/bulk` | Broadcast notification to multiple users |
-| `POST` | `/email-alert` | Send a direct email alert |
-| `GET` | `/all` | Get all platform notifications |
-| `GET` | `/type/{type}` | Filter by type (LIKE, COMMENT, etc.) |
+| DELETE | `/api/v1/media/post/{postId}/soft-delete` | Soft-delete all media for a deleted post (called by post-service) |
 
-### Internal endpoint (service-to-service, no JWT)
+### Story Endpoints (all require JWT)
 
-| Method | Endpoint | Description |
+| Method | URL | Description |
 |---|---|---|
-| `POST` | `/internal` | Create notification directly (REST fallback if RabbitMQ down) |
+| POST | `/api/v1/stories` | Create a 24-hour ephemeral story |
+| GET | `/api/v1/stories/feed?authorIds=1,2,3` | Get active stories from followed users |
+| GET | `/api/v1/stories/{storyId}/view` | View story (increments view count if viewer ≠ author) |
+| GET | `/api/v1/stories/user/{authorId}` | Get all active stories by a user |
+| DELETE | `/api/v1/stories/{storyId}` | Delete story (author or ADMIN/MODERATOR) |
 
-### Example responses
+---
 
-**GET `/recipient/5/unread-count`**
+## Allowed File Types & Size Limits
+
+| Type | Allowed MIME Types | Max Size |
+|---|---|---|
+| IMAGE | `image/jpeg`, `image/png`, `image/webp` | 10 MB (10240 KB) |
+| VIDEO | `video/mp4` | 100 MB (102400 KB) |
+
+---
+
+## Request / Response Examples
+
+### Upload Media
+
+**Request** `POST /api/v1/media/upload` (multipart/form-data)
+```
+Key  : file
+Type : File
+Value: photo.jpg
+```
+
+**Response** `201 Created`
 ```json
 {
   "success": true,
-  "message": "Unread count fetched",
-  "data": 7
-}
-```
-
-**GET `/recipient/5?isRead=false`**
-```json
-{
-  "success": true,
-  "message": "Notifications fetched successfully",
-  "data": [
-    {
-      "notificationId": 101,
-      "recipientId": 5,
-      "actorId": 12,
-      "type": "LIKE",
-      "message": "Rahul Kumar liked your post",
-      "targetId": 42,
-      "targetType": "POST",
-      "deepLinkUrl": "/posts/42",
-      "isRead": false,
-      "createdAt": "2026-04-20T10:30:00"
-    }
-  ]
-}
-```
-
----
-
-## 7. RabbitMQ Configuration
-
-### application.yml properties
-
-```yaml
-notification:
-  rabbitmq:
-    exchange: connectsphere.notification.exchange
-    queue: connectsphere.notification.queue
-    routing-key: notification.event
-```
-
-### RabbitMQConfig
-
-```
-Exchange  →  connectsphere.notification.exchange  (DirectExchange)
-Queue     →  connectsphere.notification.queue
-Binding   →  exchange + routing-key → queue
-Converter →  Jackson2JsonMessageConverter  (JSON serialization)
-```
-
-### Message format (NotificationEventMessage)
-
-```json
-{
-  "recipientId": 5,
-  "actorId": 12,
-  "type": "LIKE",
-  "message": "Someone liked your post",
-  "targetId": 42,
-  "targetType": "POST",
-  "deepLinkUrl": "/posts/42"
-}
-```
-
----
-
-## 8. Service Classes
-
-### NotificationServiceImpl — key methods
-
-| Method | What it does |
-|---|---|
-| `createNotification(request)` | Self-check → dedupe → build message → save → email guard |
-| `sendBulkNotification(request)` | Admin broadcast — saves N rows for N recipients |
-| `markAsRead(notificationId, userId)` | Ownership check → atomic UPDATE (no full entity load) |
-| `markAllRead(recipientId)` | Bulk UPDATE — all unread → read for one user |
-| `getByRecipient(recipientId, isRead)` | Fetch list, optionally filtered by read state |
-| `getUnreadCount(recipientId)` | COUNT query → badge number |
-| `deleteNotification(id, userId, role)` | Owner or ADMIN can delete |
-| `sendEmailAlert(request)` | Admin-triggered email, runs `@Async` |
-| `isHighPriorityEmailEvent(type, recipientId)` | Returns true only for follower milestones |
-| `isFollowerMilestone(recipientId)` | Counts FOLLOW notifications — checks milestone thresholds |
-
-### NotificationRepository — key queries
-
-| Method | Purpose |
-|---|---|
-| `findByRecipientIdOrderByCreatedAtDesc` | Full notification feed |
-| `findByRecipientIdAndIsReadOrderByCreatedAtDesc` | Filtered by read state |
-| `countByRecipientIdAndIsRead` | Unread badge count |
-| `findByActorIdAndTargetIdAndType` | Deduplication check |
-| `markAsReadById` | Atomic single UPDATE |
-| `markAllAsReadByRecipient` | Atomic bulk UPDATE |
-| `countByRecipientIdAndType` | Follower milestone count |
-
----
-
-## 9. Publisher Services
-
-### like-service — publishLikeNotification()
-
-```java
-// Called after likeTarget() saves successfully
-// Resolves recipientId by fetching post author from post-service via Feign
-NotificationEventMessage message = NotificationEventMessage.builder()
-    .recipientId(post.getAuthorId())
-    .actorId(userId)
-    .type("LIKE")
-    .message("Someone liked your post")
-    .targetId(postId)
-    .targetType("POST")
-    .deepLinkUrl("/posts/" + postId)
-    .build();
-rabbitTemplate.convertAndSend(exchange, routingKey, message);
-```
-
-### comment-service — publishCommentNotification()
-
-```java
-// type = "COMMENT" for top-level, "REPLY" if parentCommentId != null
-// recipientId = postAuthorId returned by verifyPostExists()
-NotificationEventMessage event = NotificationEventMessage.builder()
-    .recipientId(postAuthorId)   // ← correctly returned from verifyPostExists()
-    .actorId(authorId)
-    .type(parentCommentId != null ? "REPLY" : "COMMENT")
-    .message(parentCommentId != null
-        ? "Someone replied to your comment"
-        : "Someone commented on your post")
-    .targetId(postId)
-    .targetType("POST")
-    .deepLinkUrl("/posts/" + postId)
-    .build();
-rabbitTemplate.convertAndSend(exchange, routingKey, event);
-```
-
-### follow-service — publishFollowNotification()
-
-```java
-// recipientId = followeeId (person who got followed)
-// actorId     = followerId (person who followed)
-NotificationEventMessage message = NotificationEventMessage.builder()
-    .recipientId(followeeId)
-    .actorId(followerId)
-    .type("FOLLOW")
-    .message("Someone started following you")
-    .deepLinkUrl("/profile/" + followerId)
-    .build();
-rabbitTemplate.convertAndSend(exchange, routingKey, message);
-```
-
----
-
-## 10. Frontend Integration
-
-### Step 1 — Poll badge count every 30 seconds
-
-```javascript
-// Run after user logs in
-setInterval(async () => {
-  const res = await fetch(`/api/v1/notifications/recipient/${userId}/unread-count`, {
-    headers: { Authorization: `Bearer ${jwt}` }
-  });
-  const { data } = await res.json();  // data = integer e.g. 5
-  updateBadge(data);                  // show red circle on bell icon
-}, 30_000);
-```
-
-### Step 2 — Open bell dropdown
-
-```javascript
-async function openNotificationDropdown() {
-  const res = await fetch(`/api/v1/notifications/recipient/${userId}?isRead=false`, {
-    headers: { Authorization: `Bearer ${jwt}` }
-  });
-  const { data } = await res.json();
-  renderDropdown(data);  // render list with message, time, deep link
-}
-```
-
-### Step 3 — User clicks a notification
-
-```javascript
-async function onNotificationClick(notificationId, deepLinkUrl) {
-  await fetch(`/api/v1/notifications/${notificationId}/read`, {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${jwt}` }
-  });
-  window.location.href = deepLinkUrl;  // navigate to post/profile
-}
-```
-
-### Step 4 — Mark all read
-
-```javascript
-async function markAllRead() {
-  await fetch(`/api/v1/notifications/recipient/${userId}/read-all`, {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${jwt}` }
-  });
-  updateBadge(0);
-}
-```
-
-### Badge update helper
-
-```javascript
-function updateBadge(count) {
-  const badge = document.getElementById('notif-badge');
-  if (count > 0) {
-    badge.textContent = count > 99 ? '99+' : count;
-    badge.style.display = 'block';
-  } else {
-    badge.style.display = 'none';
+  "message": "Media uploaded successfully",
+  "data": {
+    "mediaId": 1,
+    "uploaderId": 3,
+    "url": "https://cdn.connectsphere.com/media/2026/04/uuid-abc123.jpg",
+    "mediaType": "IMAGE",
+    "sizeKb": 256,
+    "mimeType": "image/jpeg",
+    "linkedPostId": null,
+    "uploadedAt": "2026-04-20T10:00:00"
   }
 }
 ```
 
 ---
 
-## 11. Bug Fixes Applied
+### Create Story
 
-### Bug 1 — Email sent on every notification (notification-service)
-
-**Problem:** `createNotification()` called `sendEmailAlertAsync()` unconditionally.
-1000 likes = 1000 emails to the post author's inbox.
-
-**Fix:** Replaced unconditional call with `isHighPriorityEmailEvent()` guard.
-LIKE / COMMENT / REPLY / MENTION always return `false` — no email ever.
-FOLLOW returns `true` only on milestone follower counts.
-
-```java
-// BEFORE (wrong)
-if (recipientEmail != null) {
-    sendEmailAlertAsync(recipientEmail, request.getType(), finalMessage);
-}
-
-// AFTER (correct)
-if (recipientEmail != null && isHighPriorityEmailEvent(request.getType(), request.getRecipientId())) {
-    sendEmailAlertAsync(recipientEmail, request.getType(), finalMessage);
+**Request** `POST /api/v1/stories`
+```json
+{
+  "mediaUrl": "https://cdn.connectsphere.com/media/2026/04/uuid-abc123.jpg",
+  "caption": "Good morning!",
+  "mediaType": "IMAGE"
 }
 ```
 
-### Bug 2 — Comment notifications silently skipped (comment-service)
-
-**Problem:** `verifyPostExists()` fetched the post's `authorId` from Feign response
-but then `return null` at the bottom of the method.
-So `publishCommentNotification()` always received `recipientId = null`
-and the notification was never published to RabbitMQ.
-
-**Fix:** Return `response.getData().getAuthorId()` inside the try block
-and remove the orphaned `return null`.
-
-```java
-// BEFORE (wrong)
-log.debug("Post verified successfully: postId={}", postId);
-// ... catch blocks ...
-return null;  // ← always returned null
-
-// AFTER (correct)
-log.debug("Post verified successfully: postId={}", postId);
-return response.getData().getAuthorId();  // ← returns actual postAuthorId
-// ... catch blocks (no return null at bottom)
+**Response** `201 Created`
+```json
+{
+  "success": true,
+  "message": "Story created successfully",
+  "data": {
+    "storyId": 1,
+    "authorId": 3,
+    "mediaUrl": "https://cdn.connectsphere.com/media/2026/04/uuid-abc123.jpg",
+    "caption": "Good morning!",
+    "mediaType": "IMAGE",
+    "viewsCount": 0,
+    "expiresAt": "2026-04-21T10:00:00",
+    "createdAt": "2026-04-20T10:00:00",
+    "isActive": true
+  }
+}
 ```
 
 ---
 
-## 12. Non-Functional Notes
+## Security Design
 
-| Concern | Behaviour |
+- JWT tokens are validated by `JwtAuthenticationFilter` on every request.
+- `userId` and `role` are extracted from JWT and stored as request attributes (`requestingUserId`, `requestingUserRole`).
+- The controller reads `userId` only from request attributes — **never from the request body** — preventing spoofing.
+- Only the uploader/author or `ADMIN`/`MODERATOR` can delete media or stories.
+- View count is **not incremented** when the story's own author views it.
+
+---
+
+## Story Expiry
+
+Stories automatically expire 24 hours after creation. `StoryExpiryScheduler` runs every 5 minutes (cron: `0 */5 * * * *`) and calls `storyRepository.deactivateExpiredStories(now)` — a single batch `UPDATE` query. This satisfies the NFR: *"Stories are purged within 5 minutes of their 24-hour expiry."*
+
+---
+
+## Media Upload Flow
+
+```
+1. Client sends multipart POST /media/upload
+2. MIME type validated against allowlist
+3. File size validated against configurable limits
+4. UUID-based unique filename generated
+5. CDN URL built: {cdn-base-url}/{year}/{month}/{uuid}.ext
+6. Media entity persisted (linkedPostId = null)
+7. CDN URL returned → client uses it in CreatePostRequest.mediaUrls
+8. Client later calls PATCH /media/{mediaId}/link/{postId} to associate
+```
+
+---
+
+## Soft Delete
+
+- **Media:** `isDeleted = true` — record retained for 30-day audit trail.
+- **Story:** `isActive = false` — set on manual delete or scheduler expiry.
+- When `post-service` deletes a post, it calls `DELETE /media/post/{postId}/soft-delete` to cascade the soft delete to all linked media.
+
+---
+
+## Running Locally
+
+### Prerequisites
+- Java 17
+- MySQL 8 running on `localhost:3306`
+- Eureka Server on `localhost:8761` (or disable in config)
+
+### Steps
+
+```bash
+cd media-service
+
+export DB_USERNAME=root
+export DB_PASSWORD=yourpassword
+export JWT_SECRET=your_jwt_secret
+
+./mvnw clean package -DskipTests
+./mvnw spring-boot:run
+```
+
+### Swagger UI
+```
+http://localhost:8085/api/v1/swagger-ui.html
+```
+
+### Actuator Health
+```
+http://localhost:8085/api/v1/actuator/health
+```
+
+---
+
+## Running Tests
+
+```bash
+./mvnw test
+```
+
+---
+
+## Configuration Reference (`application.yml`)
+
+| Property | Default | Description |
+|---|---|---|
+| `media.max-image-size-kb` | 10240 | Max image upload size (10 MB) |
+| `media.max-video-size-kb` | 102400 | Max video upload size (100 MB) |
+| `media.allowed-image-types` | jpeg,png,webp | Allowed image MIME types |
+| `media.allowed-video-types` | video/mp4 | Allowed video MIME types |
+| `media.cdn-base-url` | https://cdn.connectsphere.com/media | CDN base URL for generated URLs |
+| `story.expiry-check-cron` | `0 */5 * * * *` | Story expiry scheduler cron |
+
+---
+
+## Related Services
+
+| Service | Interaction |
 |---|---|
-| **RabbitMQ down** | Messages queue up and deliver when it recovers. REST fallback at `/internal` available. |
-| **auth-service down** | Actor name defaults to `"Someone"`, email skipped. Notification still saved. |
-| **Duplicate events** | Deduplicated by `actorId + targetId + type` check before insert. |
-| **Self-notifications** | Skipped if `actorId == recipientId`. |
-| **Async email** | `@Async` — never blocks the API response. Failures logged, not thrown. |
-| **Atomic mark-read** | Uses `@Modifying @Query` UPDATE — no full entity load on every click. |
-| **Unread count** | Simple `COUNT` query — fast even at scale. |
-| **Soft delete** | Notifications are hard-deleted (user action). Posts/comments are soft-deleted — media retained 30 days per spec. |
+| auth-service | Issues JWT tokens validated here |
+| post-service | Calls `DELETE /media/post/{postId}/soft-delete` on post deletion |
+| follow-service | Provides `authorIds` consumed by `/stories/feed` |
+| eureka-server | Service registration & discovery |
+| config-server | Centralized config (optional in dev) |

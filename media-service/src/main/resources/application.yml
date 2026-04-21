@@ -1,0 +1,93 @@
+server:
+  port: 8085
+  servlet:
+    context-path: /api/v1
+
+spring:
+  application:
+    name: media-service
+
+  # MySQL Database Configuration
+  # Each microservice owns its own schema (case study section 5)
+  datasource:
+    url: jdbc:mysql://localhost:3306/connectsphere_media?createDatabaseIfNotExist=true&useSSL=false&serverTimezone=UTC&allowPublicKeyRetrieval=true
+    username: ${DB_USERNAME}
+    password: ${DB_PASSWORD}
+    driver-class-name: com.mysql.cj.jdbc.Driver
+
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: true
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.MySQL8Dialect
+        format_sql: true
+
+  # Multipart file upload configuration (for direct file upload endpoint)
+  servlet:
+    multipart:
+      enabled: true
+      max-file-size: 100MB
+      max-request-size: 110MB
+
+  # Spring Cloud Config Server
+  config:
+    import: optional:configserver:http://localhost:8888
+
+# Eureka Service Discovery
+eureka:
+  client:
+    service-url:
+      defaultZone: http://localhost:8761/eureka/
+    register-with-eureka: true
+    fetch-registry: true
+  instance:
+    prefer-ip-address: true
+    instance-id: ${spring.application.name}:${server.port}
+
+# JWT Configuration (shared secret with auth-service — MUST match)
+jwt:
+  secret: ${JWT_SECRET}
+
+# Media Service Configuration
+media:
+  # Maximum file sizes
+  max-image-size-kb: 10240     # 10 MB for images
+  max-video-size-kb: 102400    # 100 MB for videos
+  allowed-image-types: image/jpeg,image/png,image/webp
+  allowed-video-types: video/mp4
+
+  # CDN / Storage base URL (simulated — replace with actual S3/CloudFront URL)
+  cdn-base-url: https://cdn.connectsphere.com/media
+  storage-base-path: /uploads
+
+# Story Expiry Scheduler
+story:
+  expiry-check-cron: "0 */5 * * * *"   # Runs every 5 minutes (NFR: purge within 5 min of 24h expiry)
+
+# Actuator Health Endpoint
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics
+  endpoint:
+    health:
+      show-details: always
+
+# Swagger / OpenAPI Documentation
+springdoc:
+  api-docs:
+    path: /api-docs
+  swagger-ui:
+    path: /swagger-ui.html
+
+# Logging
+logging:
+  level:
+    com.connectsphere.media: DEBUG
+    org.springframework.security: INFO
+    org.hibernate.SQL: DEBUG
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"
