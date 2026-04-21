@@ -28,6 +28,13 @@ spring:
       hibernate:
         format_sql: true   # Format SQL for readability
 
+  rabbitmq:
+    host: ${RABBITMQ_HOST}
+    port: ${RABBITMQ_PORT}
+    username: ${RABBITMQ_USERNAME}
+    password: ${RABBITMQ_PASSWORD}
+    virtual-host: /
+
 server:
   port: 8082   # Post-service runs on port 8082
   servlet:
@@ -46,6 +53,14 @@ eureka:
 # JWT secret must match auth-service exactly - used to validate tokens
 jwt:
   secret: ${JWT_SECRET}
+
+# RabbitMQ — publishes post events to search-service for hashtag indexing
+post:
+  rabbitmq:
+    exchange: connectsphere.post.exchange
+    post-created-routing-key: post.created
+    post-updated-routing-key: post.updated
+    post-deleted-routing-key: post.deleted
 
 management:
   endpoints:

@@ -1,0 +1,93 @@
+spring:
+  application:
+    name: search-service
+
+  config:
+    import: optional:configserver:http://localhost:8888
+
+  datasource:
+    url: jdbc:mysql://localhost:3306/connectsphere_search?createDatabaseIfNotExist=true&useSSL=false&serverTimezone=Asia/Kolkata
+    username: ${DB_USERNAME}
+    password: ${DB_PASSWORD}
+    driver-class-name: com.mysql.cj.jdbc.Driver
+
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: true
+    properties:
+      hibernate:
+        format_sql: true
+
+  rabbitmq:
+    host: ${RABBITMQ_HOST}
+    port: ${RABBITMQ_PORT}
+    username: ${RABBITMQ_USERNAME}
+    password: ${RABBITMQ_PASSWORD}
+    virtual-host: /
+
+server:
+  port: 8088
+  servlet:
+    context-path: /api/v1
+
+eureka:
+  client:
+    service-url:
+      defaultZone: http://localhost:8761/eureka/
+    fetch-registry: true
+    register-with-eureka: true
+  instance:
+    prefer-ip-address: true
+    instance-id: ${spring.application.name}:${server.port}
+
+jwt:
+  secret: ${JWT_SECRET}
+
+# Feign client config — calls post-service and auth-service
+feign:
+  client:
+    config:
+      post-service:
+        connect-timeout: 3000
+        read-timeout: 5000
+        logger-level: BASIC
+      auth-service:
+        connect-timeout: 3000
+        read-timeout: 5000
+        logger-level: BASIC
+
+# RabbitMQ — listens for post events published by post-service
+search:
+  rabbitmq:
+    post-exchange: connectsphere.post.exchange
+    post-created-queue: connectsphere.search.post.created.queue
+    post-created-routing-key: post.created
+    post-updated-queue: connectsphere.search.post.updated.queue
+    post-updated-routing-key: post.updated
+    post-deleted-queue: connectsphere.search.post.deleted.queue
+    post-deleted-routing-key: post.deleted
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics
+  endpoint:
+    health:
+      show-details: always
+
+logging:
+  level:
+    com.connectsphere.search: DEBUG
+    org.springframework.security: INFO
+    org.hibernate.SQL: DEBUG
+    org.springframework.amqp: INFO
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"
+
+springdoc:
+  api-docs:
+    path: /api-docs
+  swagger-ui:
+    path: /swagger-ui.html

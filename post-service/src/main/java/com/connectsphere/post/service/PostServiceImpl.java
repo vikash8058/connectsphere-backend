@@ -6,6 +6,7 @@ import com.connectsphere.post.entity.PostType;
 import com.connectsphere.post.entity.Visibility;
 import com.connectsphere.post.exception.PostNotFoundException;
 import com.connectsphere.post.exception.UnauthorizedActionException;
+import com.connectsphere.post.messaging.PostEventPublisher;
 import com.connectsphere.post.repository.PostRepository;
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
@@ -36,6 +37,7 @@ import java.util.stream.Collectors;
 public class PostServiceImpl implements PostService {
 
     private final PostRepository postRepository;
+    private final PostEventPublisher eventPublisher;
 
     // CREATE POST
 
@@ -66,6 +68,9 @@ public class PostServiceImpl implements PostService {
 
         Post saved = postRepository.save(post);
         log.info("Post created with postId: {}", saved.getPostId());
+
+        // Publish event for search-service to index hashtags
+        eventPublisher.publishPostCreated(saved);
 
         return ApiResponseDTO.success("Post created successfully", toDTO(saved));
     }
@@ -119,12 +124,24 @@ public class PostServiceImpl implements PostService {
         Post post = findActivePostById(postId);
         checkOwnership(post, requestingUserId);
 
+        // Store old content for re-indexing
+        String oldContent = post.getContent();
+
         if (request.getContent() != null && !request.getContent().isBlank()) {
             post.setContent(request.getContent());
         }
 
         Post updated = postRepository.save(post);
         log.info("Post updated: {}", postId);
+
+        // Publish event for search-service to re-index hashtags
+        eventPublisher.publishPostUpdated(Post.builder()
+                .postId(post.getPostId())
+                .authorId(post.getAuthorId())
+                .content(oldContent)
+                .visibility(post.getVisibility())
+                .build(), updated);
+
         return ApiResponseDTO.success("Post updated successfully", toDTO(updated));
     }
 
@@ -148,6 +165,10 @@ public class PostServiceImpl implements PostService {
 
         postRepository.softDeleteByPostId(postId);
         log.info("Post soft-deleted: {}", postId);
+
+        // Publish event for search-service to remove index
+        eventPublisher.publishPostDeleted(postId, post.getAuthorId());
+
         return ApiResponseDTO.success("Post deleted successfully");
     }
 
