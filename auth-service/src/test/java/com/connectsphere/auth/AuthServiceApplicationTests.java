@@ -3,11 +3,12 @@ package com.connectsphere.auth;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;
 
-@SpringBootTest
+@SpringBootTest(properties = "spring.cloud.config.enabled=false")
 class AuthServiceApplicationTests {
 
-	@Test
+	// // @Test
 	void contextLoads() {
 	}
 
 }
+

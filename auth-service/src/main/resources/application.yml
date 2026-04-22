@@ -2,11 +2,9 @@ spring:
   application:
     name: auth-service   # Name of the microservice (used in Eureka & logs)
 
-  config:
-    import: optional:configserver:http://localhost:8888   # Fetch config from Config Server (optional)
 
   datasource:
-    url: jdbc:mysql://localhost:3306/connectsphere_auth?createDatabaseIfNotExist=true&useSSL=false&serverTimezone=Asia/Kolkata   # MySQL DB connection URL
+    url: jdbc:mysql://mysql:3306/connectsphere_auth?createDatabaseIfNotExist=true&useSSL=false&serverTimezone=Asia/Kolkata   # MySQL DB connection URL
     username: ${DB_USERNAME}   # Database username (from environment variable)
     password: ${DB_PASSWORD}   # Database password (from environment variable)
     driver-class-name: com.mysql.cj.jdbc.Driver   # MySQL driver class
@@ -62,7 +60,7 @@ server:
 eureka:
   client:
     service-url:
-      defaultZone: http://localhost:8761/eureka/   # Eureka server URL
+      defaultZone: http://eureka-server:8761/eureka/   # Eureka server URL
     fetch-registry: true       # Fetch services from Eureka
     register-with-eureka: true # Register this service in Eureka
 
