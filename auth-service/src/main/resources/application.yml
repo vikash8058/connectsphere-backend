@@ -2,13 +2,10 @@ spring:
   application:
     name: auth-service   # Name of the microservice (used in Eureka & logs)
 
-  config:
-    import: optional:configserver:http://localhost:8888   # Fetch config from Config Server (optional)
-
   datasource:
     url: jdbc:mysql://localhost:3306/connectsphere_auth?createDatabaseIfNotExist=true&useSSL=false&serverTimezone=Asia/Kolkata   # MySQL DB connection URL
-    username: ${DB_USERNAME}   # Database username (from environment variable)
-    password: ${DB_PASSWORD}   # Database password (from environment variable)
+    username: root   # Database username
+    password: savi2026   # Database password
     driver-class-name: com.mysql.cj.jdbc.Driver   # MySQL driver class
   
   security:
@@ -18,6 +15,7 @@ spring:
           google:
             client-id: ${GOOGLE_CLIENT_ID}
             client-secret: ${GOOGLE_CLIENT_SECRET}
+            redirect-uri: "http://localhost:8080/api/v1/login/oauth2/code/google"
             scope:
               - email
               - profile
@@ -25,8 +23,13 @@ spring:
           github:
             client-id: ${GITHUB_CLIENT_ID}
             client-secret: ${GITHUB_CLIENT_SECRET}
+            redirect-uri: "http://localhost:8080/api/v1/login/oauth2/code/github"
             scope:
               - user:email
+
+        provider:
+          google:
+            authorization-uri: https://accounts.google.com/o/oauth2/v2/auth?prompt=select_account
 
     hikari:
       maximum-pool-size: 10   # Maximum DB connections in pool
@@ -58,6 +61,7 @@ server:
   port: 8081   # Application portk
   servlet:
     context-path: /api/v1   # Base URL path for all APIs
+  forward-headers-strategy: framework
 
 eureka:
   client:
@@ -104,3 +108,6 @@ springdoc:
 
   swagger-ui:
     path: /swagger-ui.html   # Swagger UI path
+
+app:
+  frontend-url: ${FRONTEND_URL:http://localhost:5173}

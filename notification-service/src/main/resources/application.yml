@@ -2,13 +2,11 @@ spring:
   application:
     name: notification-service
 
-  config:
-    import: optional:configserver:http://localhost:8888
 
   datasource:
     url: jdbc:mysql://localhost:3306/connectsphere_notification?createDatabaseIfNotExist=true&useSSL=false&serverTimezone=Asia/Kolkata
-    username: ${DB_USERNAME}
-    password: ${DB_PASSWORD}
+    username: root
+    password: savi2026
     driver-class-name: com.mysql.cj.jdbc.Driver
 
   jpa:

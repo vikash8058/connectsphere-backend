@@ -9,6 +9,7 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.oauth2.client.authentication.OAuth2AuthenticationToken;
 import org.springframework.security.oauth2.core.user.OAuth2User;
@@ -41,6 +42,9 @@ public class OAuth2SuccessHandler implements AuthenticationSuccessHandler {
 
     private final UserRepository userRepository;
     private final JwtTokenProvider jwtTokenProvider;
+
+    @Value("${app.frontend-url}")
+    private String frontendUrl;
 
     @Override
     public void onAuthenticationSuccess(HttpServletRequest request,
@@ -116,25 +120,22 @@ public class OAuth2SuccessHandler implements AuthenticationSuccessHandler {
         String refreshToken = jwtTokenProvider.generateRefreshToken(user);
 
         log.info("OAuth2 login successful for user: {} via {}", user.getEmail(), provider);
+        log.info("Redirecting to frontend: {}", frontendUrl);
 
-        response.setContentType("application/json");
-        response.setCharacterEncoding("UTF-8");
-        response.getWriter().write(
-                "{ " +
-                "\"success\": true, " +
-                "\"message\": \"OAuth2 login successful via " + provider + "\", " +
-                "\"data\": { " +
-                    "\"accessToken\": \"" + accessToken + "\", " +
-                    "\"refreshToken\": \"" + refreshToken + "\", " +
-                    "\"tokenType\": \"Bearer\", " +
-                    "\"userId\": " + user.getUserId() + ", " +
-                    "\"username\": \"" + user.getUsername() + "\", " +
-                    "\"fullName\": \"" + user.getFullName() + "\", " +
-                    "\"email\": \"" + user.getEmail() + "\", " +
-                    "\"role\": \"" + user.getRole() + "\", " +
-                    "\"provider\": \"" + user.getProvider() + "\"" +
-                " } }"
+        // ── 6. Redirect to frontend callback ─────
+        // We pass token, userId, username, email, role as query params.
+        // The frontend OAuthCallback component will parse these and save the session.
+        String targetUrl = String.format("%s/oauth/callback?token=%s&userId=%d&username=%s&email=%s&role=%s&isPasswordSet=%b",
+                frontendUrl,
+                accessToken,
+                user.getUserId(),
+                user.getUsername(),
+                user.getEmail(),
+                user.getRole().name(),
+                user.getPasswordHash() != null
         );
+
+        response.sendRedirect(targetUrl);
     }
 
     /**

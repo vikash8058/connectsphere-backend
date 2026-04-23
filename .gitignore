@@ -26,6 +26,9 @@ build/
 .springBeans
 .sts4-cache
 
+run-all.ps1
+stop-all.ps1
+
 # IDE - VS Code
 .vscode/
 

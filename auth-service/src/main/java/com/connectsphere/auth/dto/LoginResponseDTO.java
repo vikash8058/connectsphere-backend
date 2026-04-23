@@ -31,4 +31,5 @@ public class LoginResponseDTO {
     private String profilePicUrl;
     private Role role;
     private AuthProvider provider;
+    private boolean isPasswordSet;
 }

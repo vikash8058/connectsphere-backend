@@ -2,8 +2,6 @@ spring:
   application:
     name: post-service   # Microservice name registered in Eureka & used in logs
 
-  config:
-    import: optional:configserver:http://localhost:8888   # Fetch from Config Server (optional in dev)
 
   mvc:
     dispatch-options-request: true
@@ -16,8 +14,8 @@ spring:
 
   datasource:
     url: jdbc:mysql://localhost:3306/connectsphere_post?createDatabaseIfNotExist=true&useSSL=false&serverTimezone=Asia/Kolkata
-    username: ${DB_USERNAME}   # Database username (from env variable)
-    password: ${DB_PASSWORD}   # Database password (from env variable)
+    username: root   # Database username
+    password: savi2026   # Database password
     driver-class-name: com.mysql.cj.jdbc.Driver
 
   jpa:

@@ -287,6 +287,27 @@ public class AuthServiceImpl implements AuthService {
 
     @Override
     @Transactional
+    public ApiResponseDTO<String> setInitialPassword(String email, SetPasswordRequestDTO request) {
+        log.info("Setting initial password for OAuth user: {}", email);
+        User user = userRepository.findByEmail(email)
+                .orElseThrow(() -> new UserNotFoundException("User not found"));
+
+        if (user.getPasswordHash() != null) {
+            throw new IllegalStateException("Password already set. Please use Change Password instead.");
+        }
+
+        if (!request.getNewPassword().equals(request.getConfirmPassword())) {
+            throw new IllegalArgumentException("Passwords do not match");
+        }
+
+        user.setPasswordHash(passwordEncoder.encode(request.getNewPassword()));
+        userRepository.save(user);
+
+        return ApiResponseDTO.success("Password set successfully! You can now login with email/password too.");
+    }
+
+    @Override
+    @Transactional
     public ApiResponseDTO<String> deactivateUser(Integer userId) {
         if (!userRepository.existsById(userId)) {
             throw new UserNotFoundException("User not found with ID: " + userId);
@@ -479,6 +500,7 @@ public class AuthServiceImpl implements AuthService {
                 .profilePicUrl(user.getProfilePicUrl())
                 .role(user.getRole())
                 .provider(user.getProvider())
+                .isPasswordSet(user.getPasswordHash() != null)
                 .build();
     }
 }

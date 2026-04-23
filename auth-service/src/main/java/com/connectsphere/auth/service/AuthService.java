@@ -40,6 +40,8 @@ public interface AuthService {
     ApiResponseDTO<User> updateProfileByEmail(String email, UpdateProfileRequestDTO request);
 
     ApiResponseDTO<String> changePassword(String email, ChangePasswordRequestDTO request);
+    
+    ApiResponseDTO<String> setInitialPassword(String email, SetPasswordRequestDTO request);
 
     ApiResponseDTO<String> deactivateUser(Integer userId);
 

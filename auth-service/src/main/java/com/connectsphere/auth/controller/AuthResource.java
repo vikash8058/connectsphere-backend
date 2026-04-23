@@ -168,6 +168,15 @@ public class AuthResource {
         return ResponseEntity.ok(authService.changePassword(auth.getName(), request));
     }
 
+    @PostMapping("/set-password")
+    @Operation(summary = "Set initial password for OAuth users",
+               description = "Allows Google/GitHub users to create a password so they can log in via LOCAL method as well.")
+    public ResponseEntity<ApiResponseDTO<String>> setPassword(
+            @Valid @RequestBody SetPasswordRequestDTO request) {
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        return ResponseEntity.ok(authService.setInitialPassword(auth.getName(), request));
+    }
+
     @GetMapping("/search")
     @Operation(summary = "Search users by username or full name",
                description = "Used for user discovery, @mention autocomplete, and guest search")
