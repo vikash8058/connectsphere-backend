@@ -289,6 +289,34 @@ public class AuthServiceImpl implements AuthService {
 
     @Override
     @Transactional
+    public ApiResponseDTO<String> setInitialPassword(String email, SetPasswordRequestDTO request) {
+        log.info("Setting initial password for user: {}", email);
+
+        User user = userRepository.findByEmail(email)
+                .orElseThrow(() -> new UserNotFoundException("User not found"));
+
+        // Only allow if user is an OAuth user and doesn't have a password set
+        if (user.getProvider() == AuthProvider.LOCAL) {
+            throw new IllegalArgumentException("This account was registered locally and already has a password.");
+        }
+
+        if (user.getPasswordHash() != null && !user.getPasswordHash().isEmpty()) {
+            throw new IllegalArgumentException("Password has already been set for this account.");
+        }
+
+        if (!request.getNewPassword().equals(request.getConfirmPassword())) {
+            throw new IllegalArgumentException("Passwords do not match.");
+        }
+
+        user.setPasswordHash(passwordEncoder.encode(request.getNewPassword()));
+        userRepository.save(user);
+
+        log.info("Initial password set successfully for: {}", email);
+        return ApiResponseDTO.success("Password set successfully! You can now login via email/password as well.");
+    }
+
+    @Override
+    @Transactional
     public ApiResponseDTO<String> deactivateUser(Integer userId) {
         if (!userRepository.existsById(userId)) {
             throw new UserNotFoundException("User not found with ID: " + userId);
