@@ -2,11 +2,9 @@ spring:
   application:
     name: search-service
 
-  config:
-    import: optional:configserver:http://localhost:8888
 
   datasource:
-    url: jdbc:mysql://localhost:3306/connectsphere_search?createDatabaseIfNotExist=true&useSSL=false&serverTimezone=Asia/Kolkata
+    url: jdbc:mysql://mysql:3306/connectsphere_search?createDatabaseIfNotExist=true&useSSL=false&serverTimezone=Asia/Kolkata
     username: ${DB_USERNAME}
     password: ${DB_PASSWORD}
     driver-class-name: com.mysql.cj.jdbc.Driver
@@ -34,7 +32,7 @@ server:
 eureka:
   client:
     service-url:
-      defaultZone: http://localhost:8761/eureka/
+      defaultZone: http://eureka-server:8761/eureka/
     fetch-registry: true
     register-with-eureka: true
   instance:
@@ -47,7 +45,6 @@ jwt:
 # Feign client config — calls post-service and auth-service
 feign:
   client:
-    config:
       post-service:
         connect-timeout: 3000
         read-timeout: 5000

@@ -7,7 +7,7 @@ server:
 
 eureka:
   instance:
-    hostname: localhost
+    hostname: eureka-server
   client:
     # This is the Eureka Server itself - it does NOT register with itself
     register-with-eureka: false

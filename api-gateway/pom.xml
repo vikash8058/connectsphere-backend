@@ -21,6 +21,8 @@
     <description>ConnectSphere API Gateway - Single Entry Point with JWT Validation and Routing</description>
 
     <properties>
+        <mockito.version>5.14.2</mockito.version>
+        <byte-buddy.version>1.15.11</byte-buddy.version>
         <java.version>17</java.version>
         <!-- Same Spring Cloud version as auth-service -->
         <spring-cloud.version>2023.0.0</spring-cloud.version>
@@ -116,6 +118,8 @@
 
     <build>
         <plugins>
+
+
             <plugin>
                 <groupId>org.springframework.boot</groupId>
                 <artifactId>spring-boot-maven-plugin</artifactId>

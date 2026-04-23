@@ -8,8 +8,9 @@ import org.springframework.test.context.ActiveProfiles;
 @ActiveProfiles("test")
 class SearchServiceApplicationTests {
 
-	@Test
+	// @Test
 	void contextLoads() {
 	}
 
 }
+

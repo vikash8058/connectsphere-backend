@@ -2,11 +2,9 @@ spring:
   application:
     name: notification-service
 
-  config:
-    import: optional:configserver:http://localhost:8888
 
   datasource:
-    url: jdbc:mysql://localhost:3306/connectsphere_notification?createDatabaseIfNotExist=true&useSSL=false&serverTimezone=Asia/Kolkata
+    url: jdbc:mysql://mysql:3306/connectsphere_notification?createDatabaseIfNotExist=true&useSSL=false&serverTimezone=Asia/Kolkata
     username: ${DB_USERNAME}
     password: ${DB_PASSWORD}
     driver-class-name: com.mysql.cj.jdbc.Driver
@@ -48,7 +46,7 @@ server:
 eureka:
   client:
     service-url:
-      defaultZone: http://localhost:8761/eureka/
+      defaultZone: http://eureka-server:8761/eureka/
     fetch-registry: true
     register-with-eureka: true
   instance:
@@ -74,7 +72,6 @@ notification:
 # Feign client configuration — same pattern as comment-service
 feign:
   client:
-    config:
       auth-service:
         connectTimeout: 3000    # 3 seconds to establish connection
         readTimeout: 5000       # 5 seconds to wait for response

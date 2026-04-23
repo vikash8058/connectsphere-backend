@@ -102,7 +102,9 @@ public class AuthServiceImpl implements AuthService {
         }
 
         OtpVerification otp = otpVerificationRepository
-                .findValidOtp(request.getEmail(), request.getOtpType())
+                .findValidOtps(request.getEmail(), request.getOtpType())
+                .stream()
+                .findFirst()
                 .orElseThrow(() -> new InvalidOtpException("OTP is invalid or has expired"));
 
         if (!otp.getOtpCode().equals(request.getOtpCode())) {

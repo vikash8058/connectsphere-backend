@@ -10,7 +10,7 @@ spring:
   # MySQL Database Configuration
   # Each microservice owns its own schema (case study section 5)
   datasource:
-    url: jdbc:mysql://localhost:3306/connectsphere_media?createDatabaseIfNotExist=true&useSSL=false&serverTimezone=UTC&allowPublicKeyRetrieval=true
+    url: jdbc:mysql://mysql:3306/connectsphere_media?createDatabaseIfNotExist=true&useSSL=false&serverTimezone=UTC&allowPublicKeyRetrieval=true
     username: ${DB_USERNAME}
     password: ${DB_PASSWORD}
     driver-class-name: com.mysql.cj.jdbc.Driver
@@ -32,14 +32,12 @@ spring:
       max-request-size: 110MB
 
   # Spring Cloud Config Server
-  config:
-    import: optional:configserver:http://localhost:8888
 
 # Eureka Service Discovery
 eureka:
   client:
     service-url:
-      defaultZone: http://localhost:8761/eureka/
+      defaultZone: http://eureka-server:8761/eureka/
     register-with-eureka: true
     fetch-registry: true
   instance:
