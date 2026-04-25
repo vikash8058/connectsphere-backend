@@ -1,7 +1,7 @@
 # ConnectSphere Backend - Stop Script
 # This script kills all Java processes running on the backend ports.
 
-$ports = @(8761, 8080, 8081, 8082, 8083, 8084, 8085, 8086, 8087, 8088)
+$ports = @(8761, 8080, 8081, 8082, 8083, 8084, 8085, 8086, 8087, 8088, 8095)
 
 Write-Host "Stopping all ConnectSphere Backend services..." -ForegroundColor Cyan
 

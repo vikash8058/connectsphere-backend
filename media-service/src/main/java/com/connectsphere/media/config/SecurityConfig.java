@@ -57,6 +57,11 @@ public class SecurityConfig {
 				.requestMatchers(HttpMethod.GET, "/media/post/{postId}").permitAll()
 				.requestMatchers(HttpMethod.GET, "/media/uploader/{uploaderId}").permitAll()
 
+				// Public media serving (simulated CDN)
+				// Note: matches relative to context-path (/api/v1)
+				.requestMatchers(HttpMethod.GET, "/media/cdn/**").permitAll()
+				.requestMatchers(HttpMethod.GET, "/api/v1/media/cdn/**").permitAll() // Extra safety
+
 				// Public story read endpoint (guests can see user's active stories)
 				.requestMatchers(HttpMethod.GET, "/stories/user/{authorId}").permitAll()
 

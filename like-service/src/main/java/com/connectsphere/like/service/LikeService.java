@@ -79,4 +79,9 @@ public interface LikeService {
      * No net change to likesCount counter (still one reaction).
      */
     ApiResponseDTO<LikeResponseDTO> changeReaction(Integer userId, ChangeReactionRequestDTO request);
+
+    /**
+     * Get the specific reaction a user has on a target (if any).
+     */
+    ApiResponseDTO<LikeResponseDTO> getUserReaction(Integer userId, Integer targetId, TargetType targetType);
 }

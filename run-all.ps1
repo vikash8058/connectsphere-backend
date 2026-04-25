@@ -11,6 +11,7 @@ $services = @(
     "notification-service",
     "media-service",
     "search-service",
+    "payment-service",
     "api-gateway"
 )
 

@@ -56,7 +56,16 @@ class MediaServiceImplTest {
     private StoryRepository storyRepository;
 
     @Mock
+    private com.connectsphere.media.repository.StoryViewRepository storyViewRepository;
+
+    @Mock
     private PostServiceClient postServiceClient;
+
+    @Mock
+    private com.connectsphere.media.client.AuthServiceClient authServiceClient;
+
+    @Mock
+    private com.connectsphere.media.client.FollowServiceClient followServiceClient;
 
     @InjectMocks
     private MediaServiceImpl mediaService;
@@ -71,6 +80,13 @@ class MediaServiceImplTest {
         ReflectionTestUtils.setField(mediaService, "maxVideoSizeKb",   102400L);
         ReflectionTestUtils.setField(mediaService, "allowedImageTypes", "image/jpeg,image/png,image/webp");
         ReflectionTestUtils.setField(mediaService, "allowedVideoTypes", "video/mp4");
+
+        // Default mock for profile resolution to prevent "Unknown" author in all tests
+        java.util.Map<String, Object> userData = new java.util.HashMap<>();
+        userData.put("username", "testuser");
+        userData.put("profilePicUrl", "test.jpg");
+        when(authServiceClient.getUserById(anyInt())).thenReturn(ApiResponseDTO.<java.util.Map<String, Object>>builder()
+                .success(true).data(userData).build());
     }
 
     // ── HELPERS ──────────────────────────────────────────────────────────────
@@ -624,14 +640,14 @@ class MediaServiceImplTest {
                     buildStory(2, 4, true),
                     buildStory(3, 2, true)
             );
-            when(storyRepository.findActiveStoriesByAuthorIds(List.of(2, 4)))
-                    .thenReturn(stories);
+        when(storyRepository.findActiveStoriesForFeed(eq(-1), eq(List.of(2, 4))))
+                .thenReturn(stories);
 
-            ApiResponseDTO<List<StoryResponseDTO>> response =
-                    mediaService.getActiveStories(List.of(2, 4));
+        ApiResponseDTO<List<StoryResponseDTO>> response =
+                mediaService.getActiveStories(List.of(2, 4));
 
-            assertThat(response.isSuccess()).isTrue();
-            assertThat(response.getData()).hasSize(3);
+        assertThat(response.isSuccess()).isTrue();
+        assertThat(response.getData()).hasSize(3);
         }
 
         @Test
@@ -642,7 +658,7 @@ class MediaServiceImplTest {
 
             assertThat(response.isSuccess()).isTrue();
             assertThat(response.getData()).isEmpty();
-            verify(storyRepository, never()).findActiveStoriesByAuthorIds(any());
+            verify(storyRepository, never()).findActiveStoriesForFeed(anyInt(), any());
         }
 
         @Test
@@ -696,7 +712,7 @@ class MediaServiceImplTest {
             Story story = buildStory(1, 3, true); // authorId = 3
             when(storyRepository.findByStoryIdAndIsActiveTrue(1)).thenReturn(Optional.of(story));
 
-            ApiResponseDTO<String> response = mediaService.viewStory(1, 7); // viewer = 7
+            ApiResponseDTO<String> response = mediaService.viewStory(1, 7, "token"); // viewer = 7
 
             assertThat(response.isSuccess()).isTrue();
             verify(storyRepository).incrementViewsCount(1);
@@ -708,7 +724,7 @@ class MediaServiceImplTest {
             Story story = buildStory(1, 3, true); // authorId = 3
             when(storyRepository.findByStoryIdAndIsActiveTrue(1)).thenReturn(Optional.of(story));
 
-            ApiResponseDTO<String> response = mediaService.viewStory(1, 3); // viewer = author = 3
+            ApiResponseDTO<String> response = mediaService.viewStory(1, 3, "token"); // viewer = author = 3
 
             assertThat(response.isSuccess()).isTrue();
             verify(storyRepository, never()).incrementViewsCount(any());
@@ -719,7 +735,7 @@ class MediaServiceImplTest {
         void viewStory_inactiveStory_throwsStoryNotFoundException() {
             when(storyRepository.findByStoryIdAndIsActiveTrue(99)).thenReturn(Optional.empty());
 
-            assertThatThrownBy(() -> mediaService.viewStory(99, 7))
+            assertThatThrownBy(() -> mediaService.viewStory(99, 7, "token"))
                     .isInstanceOf(StoryNotFoundException.class)
                     .hasMessageContaining("Story not found or has expired");
         }

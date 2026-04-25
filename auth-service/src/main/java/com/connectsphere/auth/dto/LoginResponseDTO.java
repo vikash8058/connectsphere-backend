@@ -3,26 +3,18 @@ package com.connectsphere.auth.dto;
 import com.connectsphere.auth.entity.AuthProvider;
 import com.connectsphere.auth.entity.Role;
 import lombok.*;
+import java.time.LocalDateTime;
 
-/**
- * LoginResponseDTO - Sent after successful login
- *
- * Contains JWT tokens + user profile details needed by the frontend
- * to initialize the user session and display the dashboard.
- */
 @Getter
 @Setter
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
 public class LoginResponseDTO {
-
     private String accessToken;
     private String refreshToken;
     private String tokenType;
     private Long expiresIn;
-
-    // User profile data
     private Integer userId;
     private String username;
     private String fullName;
@@ -31,5 +23,8 @@ public class LoginResponseDTO {
     private String profilePicUrl;
     private Role role;
     private AuthProvider provider;
+    @com.fasterxml.jackson.annotation.JsonProperty("isPasswordSet")
     private boolean isPasswordSet;
+    private Boolean isElite;
+    private LocalDateTime eliteUntil;
 }

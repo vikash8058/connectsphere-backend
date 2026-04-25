@@ -80,6 +80,19 @@ public class LikeResource {
         return ResponseEntity.ok(likeService.changeReaction(userId, request));
     }
 
+    @GetMapping("/my")
+    @Operation(summary = "Get the current user's specific reaction on a target",
+               description = "Returns the reaction details (type, timestamp) if the user has reacted. " +
+                             "Used to show LIKE vs LOVE vs HAHA state on the button.")
+    public ResponseEntity<ApiResponseDTO<LikeResponseDTO>> getMyReaction(
+            @RequestParam Integer targetId,
+            @RequestParam TargetType targetType,
+            HttpServletRequest httpRequest) {
+
+        Integer userId = getRequestingUserId(httpRequest);
+        return ResponseEntity.ok(likeService.getUserReaction(userId, targetId, targetType));
+    }
+
     @GetMapping("/has")
     @Operation(summary = "Check if the current user has reacted",
                description = "Returns true/false — used to toggle like button state in UI.")
@@ -153,6 +166,11 @@ public class LikeResource {
         if (userId == null) {
             throw new RuntimeException("Unauthorized: userId not found in request");
         }
-        return (Integer) userId;
+        if (userId instanceof Number) {
+            return ((Number) userId).intValue();
+        } else if (userId instanceof String) {
+            return Integer.valueOf((String) userId);
+        }
+        throw new RuntimeException("Unauthorized: userId type mismatch: " + userId.getClass().getName());
     }
 }

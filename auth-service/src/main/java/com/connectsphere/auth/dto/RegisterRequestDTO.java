@@ -5,10 +5,6 @@ import lombok.*;
 
 /**
  * RegisterRequestDTO - Payload for LOCAL email+password registration
- *
- * username and email must be unique across the platform.
- * password follows strong password policy.
- * After registration, OTP is sent to email for verification.
  */
 @Getter
 @Setter
@@ -17,25 +13,28 @@ import lombok.*;
 @Builder
 public class RegisterRequestDTO {
 
-    @NotBlank(message = "Username is required")
-    @Size(min = 3, max = 50, message = "Username must be between 3 and 50 characters")
+    @NotBlank(message = "Please choose a unique username to get started")
+    @Size(min = 3, max = 50, message = "Your username should be between 3 and 50 characters")
     @Pattern(regexp = "^[a-zA-Z0-9._]+$",
-             message = "Username can only contain letters, numbers, dots and underscores")
+             message = "Usernames can only contain letters, numbers, dots, and underscores")
     private String username;
 
-    @NotBlank(message = "Full name is required")
-    @Size(min = 2, max = 100, message = "Full name must be between 2 and 100 characters")
+    @NotBlank(message = "Please tell us your full name")
+    @Size(min = 2, max = 100, message = "Full names should be between 2 and 100 characters")
     private String fullName;
 
-    @NotBlank(message = "Email is required")
-    @Email(message = "Please provide a valid email address")
+    @NotBlank(message = "An email address is required for account security")
+    @Email(message = "Please enter a valid email address (e.g., name@example.com)")
     private String email;
 
-    @NotBlank(message = "Password is required")
-    @Size(min = 8, message = "Password must be at least 8 characters")
+    @NotBlank(message = "A secure password is required to protect your account")
+    @Size(min = 8, message = "For your security, please use a password with at least 8 characters")
     @Pattern(
         regexp = "^(?=.*[0-9])(?=.*[a-z])(?=.*[A-Z])(?=.*[@#$%^&+=]).*$",
-        message = "Password must contain digit, lowercase, uppercase and special character"
+        message = "Your password must include at least one uppercase letter, one lowercase letter, one number, and one special character"
     )
     private String password;
+
+    @NotBlank(message = "Please confirm your password to ensure they match")
+    private String confirmPassword;
 }

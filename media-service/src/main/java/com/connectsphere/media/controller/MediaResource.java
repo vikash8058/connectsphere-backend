@@ -50,6 +50,9 @@ public class MediaResource {
 
     private final MediaService mediaService;
 
+    @org.springframework.beans.factory.annotation.Value("${media.storage-base-path}")
+    private String storageBasePath;
+
     // ─── MEDIA ENDPOINTS ─────────────────────────────────────────────────────
 
     /**
@@ -176,17 +179,20 @@ public class MediaResource {
                 .body(mediaService.createStory(request, authorId));
     }
 
-    /**
-     * Get active stories from a list of followed users (news feed stories panel).
-     * authorIds = from follow-service (followee IDs of the current user).
-     */
     @GetMapping("/stories/feed")
     @Operation(
         summary = "Get stories feed",
-        description = "Returns active stories from provided authorIds (followed users). authorIds from follow-service."
+        description = "Returns active stories. If authorIds are not provided, it automatically fetches stories for the authenticated user and their followees."
     )
     public ResponseEntity<ApiResponseDTO<List<StoryResponseDTO>>> getActiveStories(
-            @RequestParam List<Integer> authorIds) {
+            @RequestParam(required = false) List<Integer> authorIds,
+            HttpServletRequest httpRequest) {
+
+        if (authorIds == null || authorIds.isEmpty()) {
+            Integer userId = getRequestingUserId(httpRequest);
+            String authHeader = httpRequest.getHeader("Authorization");
+            return ResponseEntity.ok(mediaService.getActiveStoriesForUser(userId, authHeader));
+        }
 
         return ResponseEntity.ok(mediaService.getActiveStories(authorIds));
     }
@@ -204,7 +210,8 @@ public class MediaResource {
             HttpServletRequest httpRequest) {
 
         Integer viewerUserId = getRequestingUserId(httpRequest);
-        return ResponseEntity.ok(mediaService.viewStory(storyId, viewerUserId));
+        String authHeader = httpRequest.getHeader("Authorization");
+        return ResponseEntity.ok(mediaService.viewStory(storyId, viewerUserId, authHeader));
     }
 
     /**
@@ -221,9 +228,15 @@ public class MediaResource {
         return ResponseEntity.ok(mediaService.getStoriesByUser(authorId));
     }
 
-    /**
-     * Delete a story (author's own before expiry, or admin moderation).
-     */
+    @GetMapping("/stories/{storyId}/viewers")
+    @Operation(summary = "Get story viewer list",
+               description = "Returns list of user profiles who viewed the story. Only accessible by story author.")
+    public ResponseEntity<ApiResponseDTO<List<java.util.Map<String, Object>>>> getStoryViewers(
+            @PathVariable Integer storyId,
+            HttpServletRequest httpRequest) {
+        Integer userId = getRequestingUserId(httpRequest);
+        return ResponseEntity.ok(mediaService.getStoryViewers(storyId, userId));
+    }
     @DeleteMapping("/stories/{storyId}")
     @Operation(
         summary = "Delete a story",
@@ -237,6 +250,36 @@ public class MediaResource {
         String requestingUserRole = getRequestingUserRole(httpRequest);
         return ResponseEntity.ok(
                 mediaService.deleteStory(storyId, requestingUserId, requestingUserRole));
+    }
+
+    /**
+     * Serve uploaded files from the local uploads directory.
+     * This simulates a CDN serving files.
+     */
+    @GetMapping("/media/cdn/{fileName}")
+    @Operation(summary = "Serve media file", description = "Serves the actual file bytes for a given filename. Simulates CDN behavior.")
+    public ResponseEntity<org.springframework.core.io.Resource> serveFile(@PathVariable String fileName) {
+        try {
+            java.nio.file.Path filePath = java.nio.file.Paths.get(storageBasePath).resolve(fileName).normalize();
+            org.springframework.core.io.Resource resource = new org.springframework.core.io.UrlResource(filePath.toUri());
+
+            if (resource.exists() || resource.isReadable()) {
+                String contentType = "application/octet-stream";
+                try {
+                    contentType = java.nio.file.Files.probeContentType(filePath);
+                } catch (java.io.IOException e) {
+                    log.error("Could not determine file type.");
+                }
+
+                return ResponseEntity.ok()
+                        .contentType(org.springframework.http.MediaType.parseMediaType(contentType))
+                        .body(resource);
+            } else {
+                return ResponseEntity.notFound().build();
+            }
+        } catch (java.net.MalformedURLException e) {
+            return ResponseEntity.badRequest().build();
+        }
     }
 
     // ─── PRIVATE HELPERS ─────────────────────────────────────────────────────

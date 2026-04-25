@@ -45,6 +45,12 @@ class PostServiceImplTest {
     @Mock
     private PostRepository postRepository;
 
+    @Mock
+    private com.connectsphere.post.messaging.PostEventPublisher eventPublisher;
+
+    @Mock
+    private com.connectsphere.post.client.FollowServiceClient followServiceClient;
+
     @InjectMocks
     private PostServiceImpl postService;
 
@@ -266,7 +272,7 @@ class PostServiceImplTest {
                     .thenReturn(posts);
 
             // When
-            ApiResponseDTO<List<PostResponseDTO>> response = postService.getPostsByUser(authorId);
+            ApiResponseDTO<List<PostResponseDTO>> response = postService.getPostsByUser(authorId, null, null);
 
             // Then
             assertThat(response.isSuccess()).isTrue();
@@ -284,7 +290,7 @@ class PostServiceImplTest {
                     .thenReturn(List.of());
 
             // When
-            ApiResponseDTO<List<PostResponseDTO>> response = postService.getPostsByUser(99);
+            ApiResponseDTO<List<PostResponseDTO>> response = postService.getPostsByUser(99, null, null);
 
             // Then
             assertThat(response.isSuccess()).isTrue();
@@ -303,48 +309,67 @@ class PostServiceImplTest {
         void getFeedForUser_withFollowees_returnsFeed() {
 
             // Given
-            List<Integer> followeeIds = List.of(1, 2, 3);
+            Integer userId = 1;
+            String authHeader = "Bearer token";
+            List<Integer> followeeIds = List.of(1); // Service adds self
+            // Note: In real logic, service calls followServiceClient to get more IDs
+            
             List<Post> feedPosts = List.of(
                     buildPost(10, 1, Visibility.PUBLIC),
-                    buildPost(11, 2, Visibility.FOLLOWERS_ONLY),
-                    buildPost(12, 3, Visibility.PUBLIC)
+                    buildPost(11, 1, Visibility.FOLLOWERS_ONLY)
             );
-            when(postRepository.findFeedByUserIds(followeeIds)).thenReturn(feedPosts);
+            
+            // We need to mock the followServiceClient as well since the service now calls it
+            when(followServiceClient.getFolloweeIds(eq(userId), eq(authHeader)))
+                .thenReturn(ApiResponseDTO.success("Success", List.of()));
+
+            when(postRepository.findFeedPersonalized(anyList(), eq(userId)))
+                .thenReturn(feedPosts);
 
             // When
-            ApiResponseDTO<List<PostResponseDTO>> response = postService.getFeedForUser(followeeIds);
+            ApiResponseDTO<List<PostResponseDTO>> response = postService.getFeedForUser(userId, authHeader);
 
             // Then
             assertThat(response.isSuccess()).isTrue();
-            assertThat(response.getData()).hasSize(3);
-            verify(postRepository).findFeedByUserIds(followeeIds);
+            assertThat(response.getData()).hasSize(2);
+            verify(postRepository).findFeedPersonalized(anyList(), eq(userId));
         }
 
         @Test
-        @DisplayName("Should return empty feed when followeeIds list is empty")
-        void getFeedForUser_emptyFolloweeList_emptyFeed() {
+        @DisplayName("Should return only self posts when following list is empty")
+        void getFeedForUser_emptyFolloweeList_selfFeed() {
+            // Given
+            Integer userId = 1;
+            String authHeader = "Bearer token";
+            
+            // Mock follow service returning empty list
+            when(followServiceClient.getFolloweeIds(eq(userId), eq(authHeader)))
+                .thenReturn(ApiResponseDTO.success("Success", List.of()));
+
+            // Mock repo returning only self posts
+            when(postRepository.findFeedPersonalized(anyList(), eq(userId)))
+                .thenReturn(List.of(buildPost(100, 1, Visibility.PUBLIC)));
 
             // When
-            ApiResponseDTO<List<PostResponseDTO>> response = postService.getFeedForUser(List.of());
+            ApiResponseDTO<List<PostResponseDTO>> response = postService.getFeedForUser(userId, authHeader);
+
+            // Then
+            assertThat(response.isSuccess()).isTrue();
+            assertThat(response.getData()).hasSize(1);
+            verify(postRepository).findFeedPersonalized(anyList(), eq(userId));
+        }
+
+        @Test
+        @DisplayName("Should return empty feed when userId is null")
+        void getFeedForUser_nullUserId_emptyFeed() {
+
+            // When
+            ApiResponseDTO<List<PostResponseDTO>> response = postService.getFeedForUser(null, null);
 
             // Then
             assertThat(response.isSuccess()).isTrue();
             assertThat(response.getData()).isEmpty();
-            // Repo should NOT be called when followee list is empty
-            verify(postRepository, never()).findFeedByUserIds(any());
-        }
-
-        @Test
-        @DisplayName("Should return empty feed when null followeeIds")
-        void getFeedForUser_nullFolloweeList_emptyFeed() {
-
-            // When
-            ApiResponseDTO<List<PostResponseDTO>> response = postService.getFeedForUser(null);
-
-            // Then
-            assertThat(response.isSuccess()).isTrue();
-            assertThat(response.getData()).isEmpty();
-            verify(postRepository, never()).findFeedByUserIds(any());
+            verify(postRepository, never()).findFeedPersonalized(anyList(), any());
         }
     }
 

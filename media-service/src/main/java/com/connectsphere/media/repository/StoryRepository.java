@@ -27,20 +27,24 @@ import java.util.Optional;
 public interface StoryRepository extends JpaRepository<Story, Integer> {
 
     /**
-     * Find all active stories from a list of authorIds (followed users).
-     * Used for the "View Stories" panel — stories feed from followees.
-     * Only returns isActive=true stories ordered by createdAt DESC.
-     *
-     * authorIds = list of userId values of the users the current user follows
-     * (obtained from follow-service by the caller)
+     * Find all active stories with strict privacy filtering:
+     * 1. Your own stories (any visibility)
+     * 2. Followees' stories (Public or Followers-only)
+     * 3. Global stories (Public only)
      */
     @Query("""
             SELECT s FROM Story s
-            WHERE s.authorId IN :authorIds
+            WHERE (
+                s.authorId = :userId 
+                OR (s.authorId IN :followeeIds AND s.visibility != 'PRIVATE')
+                OR s.visibility = 'PUBLIC'
+            )
             AND s.isActive = true
             ORDER BY s.createdAt DESC
             """)
-    List<Story> findActiveStoriesByAuthorIds(@Param("authorIds") List<Integer> authorIds);
+    List<Story> findActiveStoriesForFeed(
+            @Param("userId") Integer userId, 
+            @Param("followeeIds") List<Integer> followeeIds);
 
     /**
      * Find a single active story by ID.

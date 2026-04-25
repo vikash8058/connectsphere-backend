@@ -51,6 +51,7 @@ public class SecurityConfig {
             "/login/**",
             "/auth/users/**",
             "/auth/search",
+            "/auth/internal/**"
     };
 
     @Bean

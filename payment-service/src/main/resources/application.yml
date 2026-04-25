@@ -1,0 +1,45 @@
+spring:
+  application:
+    name: payment-service
+
+  datasource:
+    url: jdbc:mysql://localhost:3306/connectsphere_payment?createDatabaseIfNotExist=true&useSSL=false&serverTimezone=Asia/Kolkata
+    username: root
+    password: savi2026
+    driver-class-name: com.mysql.cj.jdbc.Driver
+
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: true
+    properties:
+      hibernate:
+        format_sql: true
+
+  rabbitmq:
+    host: localhost
+    port: 5672
+    username: guest
+    password: guest
+
+server:
+  port: 8095
+  servlet:
+    context-path: /api/v1
+
+eureka:
+  client:
+    service-url:
+      defaultZone: http://localhost:8761/eureka/
+
+jwt:
+  secret: dGhpcytpcy1hLXZlcnkrc2VjdXJlK2tleStmb3Irand0
+
+razorpay:
+  key-id: rzp_test_SbDER8b9DNfLu4
+  key-secret: 8Qh9ULRP3U5gByU2QMSsxQTg
+
+connectsphere:
+  notification:
+    exchange: connectsphere.notification.exchange
+    routing-key: notification.event

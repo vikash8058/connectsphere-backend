@@ -75,8 +75,11 @@ public class PostResource {
     @Operation(summary = "Get all posts by a user",
                description = "Returns public timeline of a user — PUBLIC posts only for non-authors")
     public ResponseEntity<ApiResponseDTO<List<PostResponseDTO>>> getPostsByUser(
-            @PathVariable Integer authorId) {
-        return ResponseEntity.ok(postService.getPostsByUser(authorId));
+            @PathVariable Integer authorId,
+            HttpServletRequest httpRequest) {
+        Integer userId = getUserIdLenient(httpRequest);
+        String authHeader = httpRequest.getHeader("Authorization");
+        return ResponseEntity.ok(postService.getPostsByUser(authorId, userId, authHeader));
     }
 
     @GetMapping("/search")
@@ -149,11 +152,13 @@ public class PostResource {
 
     @GetMapping("/feed")
     @Operation(summary = "Get personalised news feed",
-               description = "Returns posts from followees. Pass followeeIds as query params " +
-                             "(obtained from follow-service by the frontend or API gateway).")
+               description = "Returns posts from self and followees (Public + Followers Only). " +
+                             "Follow list is fetched automatically from follow-service.")
     public ResponseEntity<ApiResponseDTO<List<PostResponseDTO>>> getFeed(
-            @RequestParam List<Integer> followeeIds) {
-        return ResponseEntity.ok(postService.getFeedForUser(followeeIds));
+            HttpServletRequest httpRequest) {
+        Integer requestingUserId = getRequestingUserId(httpRequest);
+        String authHeader = httpRequest.getHeader("Authorization");
+        return ResponseEntity.ok(postService.getFeedForUser(requestingUserId, authHeader));
     }
 
     // INTERNAL COUNTER ENDPOINTS (called by other microservices)
@@ -204,7 +209,21 @@ public class PostResource {
         if (userId == null) {
             throw new RuntimeException("Unauthorized: userId not found in request");
         }
-        return (Integer) userId;
+        try {
+            return Integer.valueOf(userId.toString());
+        } catch (Exception e) {
+            return (Integer) userId;
+        }
+    }
+
+    private Integer getUserIdLenient(HttpServletRequest request) {
+        Object userId = request.getAttribute("requestingUserId");
+        if (userId == null) return null;
+        try {
+            return Integer.valueOf(userId.toString());
+        } catch (Exception e) {
+            return (Integer) userId;
+        }
     }
 
     /**

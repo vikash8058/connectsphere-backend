@@ -111,6 +111,13 @@ public class OAuth2SuccessHandler implements AuthenticationSuccessHandler {
                     );
                 });
 
+        // ── 3.5 Check if user is active ──
+        if (!user.getIsActive()) {
+            log.warn("OAuth2 login attempt by deactivated user: {}", finalEmail);
+            response.sendRedirect(frontendUrl + "/login?error=ACCOUNT_SUSPENDED");
+            return;
+        }
+
         // ── 4. Update last login ───
         user.setLastLoginAt(LocalDateTime.now());
         userRepository.save(user);
@@ -125,14 +132,16 @@ public class OAuth2SuccessHandler implements AuthenticationSuccessHandler {
         // ── 6. Redirect to frontend callback ─────
         // We pass token, userId, username, email, role as query params.
         // The frontend OAuthCallback component will parse these and save the session.
-        String targetUrl = String.format("%s/oauth/callback?token=%s&userId=%d&username=%s&email=%s&role=%s&isPasswordSet=%b",
+        String targetUrl = String.format("%s/oauth/callback?token=%s&userId=%d&username=%s&email=%s&role=%s&isPasswordSet=%b&profilePicUrl=%s&fullName=%s",
                 frontendUrl,
                 accessToken,
                 user.getUserId(),
                 user.getUsername(),
                 user.getEmail(),
                 user.getRole().name(),
-                user.getPasswordHash() != null
+                user.getPasswordHash() != null,
+                user.getProfilePicUrl() != null ? user.getProfilePicUrl() : "",
+                user.getFullName() != null ? user.getFullName() : ""
         );
 
         response.sendRedirect(targetUrl);

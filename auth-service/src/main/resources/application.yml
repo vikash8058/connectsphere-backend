@@ -29,7 +29,7 @@ spring:
 
         provider:
           google:
-            authorization-uri: https://accounts.google.com/o/oauth2/v2/auth?prompt=select_account
+            authorization-uri: https://accounts.google.com/o/oauth2/v2/auth
 
     hikari:
       maximum-pool-size: 10   # Maximum DB connections in pool
