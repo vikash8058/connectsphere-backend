@@ -9,6 +9,7 @@ CREATE DATABASE IF NOT EXISTS connectsphere_follow;
 CREATE DATABASE IF NOT EXISTS connectsphere_notification;
 CREATE DATABASE IF NOT EXISTS connectsphere_media;
 CREATE DATABASE IF NOT EXISTS connectsphere_search;
+CREATE DATABASE IF NOT EXISTS connectsphere_payment;
 
 GRANT ALL PRIVILEGES ON connectsphere_auth.*         TO 'connectuser'@'%';
 GRANT ALL PRIVILEGES ON connectsphere_post.*         TO 'connectuser'@'%';
@@ -18,4 +19,5 @@ GRANT ALL PRIVILEGES ON connectsphere_follow.*       TO 'connectuser'@'%';
 GRANT ALL PRIVILEGES ON connectsphere_notification.* TO 'connectuser'@'%';
 GRANT ALL PRIVILEGES ON connectsphere_media.*        TO 'connectuser'@'%';
 GRANT ALL PRIVILEGES ON connectsphere_search.*       TO 'connectuser'@'%';
+GRANT ALL PRIVILEGES ON connectsphere_payment.*      TO 'connectuser'@'%';
 FLUSH PRIVILEGES;

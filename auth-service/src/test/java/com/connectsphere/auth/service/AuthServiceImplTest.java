@@ -241,7 +241,7 @@ class AuthServiceImplTest {
                     .otpType(OtpType.EMAIL_VERIFICATION)
                     .expiresAt(LocalDateTime.now().plusMinutes(5)).isUsed(false).build();
 
-            when(otpRepository.findValidOtps(anyString(), any())).thenReturn(java.util.List.of(otp));
+            when(otpRepository.findValidOtp(anyString(), any())).thenReturn(java.util.Optional.of(otp));
 
             ApiResponseDTO<String> resp = authService.verifyOtp(req);
 
@@ -259,7 +259,7 @@ class AuthServiceImplTest {
                     .otpCode("123456")
                     .expiresAt(LocalDateTime.now().plusMinutes(5)).isUsed(false).build();
 
-            when(otpRepository.findValidOtps(anyString(), any())).thenReturn(java.util.List.of(otp));
+            when(otpRepository.findValidOtp(anyString(), any())).thenReturn(java.util.Optional.of(otp));
 
             assertThrows(InvalidOtpException.class, () -> authService.verifyOtp(req));
         }
@@ -269,7 +269,7 @@ class AuthServiceImplTest {
             OtpVerifyRequestDTO req = OtpVerifyRequestDTO.builder()
                     .email("vikash@test.com").otpCode("123456")
                     .otpType(OtpType.EMAIL_VERIFICATION).build();
-            when(otpRepository.findValidOtps(anyString(), any())).thenReturn(List.of());
+            when(otpRepository.findValidOtp(anyString(), any())).thenReturn(Optional.empty());
             assertThrows(InvalidOtpException.class, () -> authService.verifyOtp(req));
         }
     }
