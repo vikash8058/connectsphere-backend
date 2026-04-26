@@ -5,6 +5,7 @@ import com.connectsphere.media.dto.*;
 import com.connectsphere.media.entity.Media;
 import com.connectsphere.media.entity.MediaType;
 import com.connectsphere.media.entity.Story;
+import com.connectsphere.media.entity.Visibility;
 import com.connectsphere.media.exception.*;
 import com.connectsphere.media.repository.MediaRepository;
 import com.connectsphere.media.repository.StoryRepository;
@@ -51,6 +52,9 @@ public class MediaServiceImpl implements MediaService {
     private final MediaRepository mediaRepository;
     private final StoryRepository storyRepository;
     private final PostServiceClient postServiceClient;
+    private final com.connectsphere.media.client.FollowServiceClient followServiceClient;
+    private final com.connectsphere.media.repository.StoryViewRepository storyViewRepository;
+    private final com.connectsphere.media.client.AuthServiceClient authServiceClient;
 
     @Value("${media.cdn-base-url}")
     private String cdnBaseUrl;
@@ -66,6 +70,9 @@ public class MediaServiceImpl implements MediaService {
 
     @Value("${media.allowed-video-types}")
     private String allowedVideoTypes;
+
+    @Value("${media.storage-base-path}")
+    private String storageBasePath;
 
     // ─── MEDIA OPERATIONS ────────────────────────────────────────────────────
 
@@ -98,7 +105,23 @@ public class MediaServiceImpl implements MediaService {
 
         // Simulate CDN storage — generate unique URL
         // In production: upload bytes to AWS S3, get back a CloudFront CDN URL
+        // 1. Generate unique filename
         String fileName = generateUniqueFileName(file.getOriginalFilename(), mimeType);
+        
+        // 2. Save file to local storage (simulating CDN upload)
+        try {
+            java.nio.file.Path uploadPath = java.nio.file.Paths.get(storageBasePath);
+            if (!java.nio.file.Files.exists(uploadPath)) {
+                java.nio.file.Files.createDirectories(uploadPath);
+            }
+            java.nio.file.Files.copy(file.getInputStream(), uploadPath.resolve(fileName), java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+            log.info("File saved to storage: {}/{}", storageBasePath, fileName);
+        } catch (java.io.IOException e) {
+            log.error("Failed to save file: {}", e.getMessage());
+            throw new RuntimeException("Could not store file. Please try again.");
+        }
+
+        // 3. Build URL for the saved file
         String cdnUrl = buildCdnUrl(fileName);
 
         // Persist Media entity
@@ -306,7 +329,8 @@ public class MediaServiceImpl implements MediaService {
                 .caption(request.getCaption())
                 .mediaType(request.getMediaType())
                 .viewsCount(0)
-                .expiresAt(now.plusHours(24))   // Case study 2.6: "Stories visible for 24 hours"
+                .expiresAt(LocalDateTime.now().plusHours(24))
+                .visibility(request.getVisibility() != null ? request.getVisibility() : Visibility.PUBLIC)
                 .isActive(true)
                 .build();
 
@@ -328,8 +352,10 @@ public class MediaServiceImpl implements MediaService {
             return ApiResponseDTO.success("No followees provided", List.of());
         }
 
+        // Since this is a direct ID-based fetch (likely for profile rings),
+        // we use -1 as the userId to indicate 'General Viewer' (no private access)
         List<StoryResponseDTO> stories = storyRepository
-                .findActiveStoriesByAuthorIds(authorIds)
+                .findActiveStoriesForFeed(-1, authorIds)
                 .stream()
                 .map(this::toStoryResponseDTO)
                 .collect(Collectors.toList());
@@ -337,24 +363,91 @@ public class MediaServiceImpl implements MediaService {
         return ApiResponseDTO.success("Active stories retrieved", stories);
     }
 
+    @Override
+    @Transactional(readOnly = true)
+    public ApiResponseDTO<List<StoryResponseDTO>> getActiveStoriesForUser(Integer requestingUserId, String authHeader) {
+        log.info("Building story feed for user: {}", requestingUserId);
+
+        java.util.Set<Integer> authorIds = new java.util.HashSet<>();
+        // 1. Include self
+        authorIds.add(requestingUserId);
+
+        // 2. Fetch followees
+        try {
+            ApiResponseDTO<List<Integer>> response = followServiceClient.getFolloweeIds(requestingUserId);
+            if (response != null && response.isSuccess() && response.getData() != null) {
+                authorIds.addAll(response.getData());
+            }
+        } catch (Exception e) {
+            log.error("Failed to fetch followees for stories: {}", e.getMessage());
+        }
+
+        log.info("Final story authorIds list: {}", authorIds);
+
+        // 3. Fetch stories
+        List<Integer> followeeIds = new java.util.ArrayList<>(authorIds);
+        followeeIds.remove(requestingUserId); // Remove self from followees list for query separation
+
+        List<StoryResponseDTO> stories = storyRepository
+                .findActiveStoriesForFeed(requestingUserId, followeeIds)
+                .stream()
+                .map(this::toStoryResponseDTO)
+                .collect(Collectors.toList());
+
+        return ApiResponseDTO.success("Story feed retrieved", stories);
+    }
+
     /**
      * Increment view count when another user opens a story.
      * Does NOT increment if viewer == author (self-view).
+     * Enforces visibility rules: PUBLIC, FOLLOWERS_ONLY, or PRIVATE.
      */
     @Override
     @Transactional
-    public ApiResponseDTO<String> viewStory(Integer storyId, Integer viewerUserId) {
+    public ApiResponseDTO<String> viewStory(Integer storyId, Integer viewerUserId, String authHeader) {
         log.debug("MediaServiceImpl.viewStory() - storyId={}, viewerUserId={}", storyId, viewerUserId);
 
         Story story = storyRepository.findByStoryIdAndIsActiveTrue(storyId)
                 .orElseThrow(() -> new StoryNotFoundException(
                         "Story not found or has expired: " + storyId));
 
-        // Case study 2.6: "Story view counts are incremented when another user opens a story"
+        // 1. Visibility Check
+        if (story.getVisibility() == Visibility.PRIVATE) {
+            if (!story.getAuthorId().equals(viewerUserId)) {
+                throw new UnauthorizedActionException("This story is private");
+            }
+        } else if (story.getVisibility() == Visibility.FOLLOWERS_ONLY) {
+            if (!story.getAuthorId().equals(viewerUserId)) {
+                boolean isFollowing = false;
+                try {
+                    // Check if viewer follows author
+                    com.connectsphere.media.dto.ApiResponseDTO<Boolean> checkRes = followServiceClient.isFollowing(story.getAuthorId(), authHeader);
+                    if (checkRes != null && checkRes.isSuccess()) {
+                        isFollowing = Boolean.TRUE.equals(checkRes.getData());
+                    }
+                } catch (Exception e) {
+                    log.error("Failed to verify follow status: {}", e.getMessage());
+                }
+                if (!isFollowing) {
+                    throw new UnauthorizedActionException("This story is for followers only");
+                }
+            }
+        }
+
+        // 2. Case study 2.6: "Story view counts are incremented when another user opens a story"
         // Do NOT increment if the author views their own story
         if (!story.getAuthorId().equals(viewerUserId)) {
-            storyRepository.incrementViewsCount(storyId);
-            log.debug("Story view count incremented: storyId={}", storyId);
+            // Unique view tracking
+            if (!storyViewRepository.existsByStoryAndViewerUserId(story, viewerUserId)) {
+                com.connectsphere.media.entity.StoryView sv = com.connectsphere.media.entity.StoryView.builder()
+                        .story(story)
+                        .viewerUserId(viewerUserId)
+                        .build();
+                storyViewRepository.save(sv);
+                
+                storyRepository.incrementViewsCount(storyId);
+                log.debug("Story view count incremented: storyId={}", storyId);
+            }
         }
 
         return ApiResponseDTO.success("Story viewed");
@@ -385,6 +478,38 @@ public class MediaServiceImpl implements MediaService {
         log.info("Story deleted (deactivated): storyId={}", storyId);
 
         return ApiResponseDTO.success("Story deleted successfully");
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public ApiResponseDTO<List<java.util.Map<String, Object>>> getStoryViewers(Integer storyId, Integer requestingUserId) {
+        log.info("Fetching viewers for storyId={} by user={}", storyId, requestingUserId);
+
+        Story story = storyRepository.findById(storyId)
+                .orElseThrow(() -> new StoryNotFoundException("Story not found: " + storyId));
+
+        // Ownership check - only author can see the viewer list
+        if (!story.getAuthorId().equals(requestingUserId)) {
+            throw new UnauthorizedActionException("Only the author can see the viewer list");
+        }
+
+        List<Integer> viewerIds = storyViewRepository.findViewerUserIdsByStoryId(storyId);
+        List<java.util.Map<String, Object>> viewers = new java.util.ArrayList<>();
+
+        for (Integer vId : viewerIds) {
+            try {
+                ApiResponseDTO<java.util.Map<String, Object>> userRes = authServiceClient.getUserById(vId);
+                if (userRes != null && userRes.isSuccess() && userRes.getData() != null) {
+                    viewers.add(userRes.getData());
+                }
+            } catch (Exception e) {
+                log.error("Failed to fetch viewer info for userId={}: {}", vId, e.getMessage());
+                // Fallback with just ID if auth-service fails
+                viewers.add(java.util.Map.of("userId", vId, "username", "Unknown User"));
+            }
+        }
+
+        return ApiResponseDTO.success("Story viewers retrieved", viewers);
     }
 
     /**
@@ -468,11 +593,14 @@ public class MediaServiceImpl implements MediaService {
      */
     private String resolveExtension(String mimeType) {
         return switch (mimeType.trim()) {
-            case "image/jpeg" -> "jpg";
-            case "image/png"  -> "png";
-            case "image/webp" -> "webp";
-            case "video/mp4"  -> "mp4";
-            default           -> "bin";
+            case "image/jpeg"      -> "jpg";
+            case "image/png"       -> "png";
+            case "image/webp"      -> "webp";
+            case "video/mp4"       -> "mp4";
+            case "video/quicktime" -> "mov";
+            case "video/webm"      -> "webm";
+            case "video/ogg"       -> "ogg";
+            default                -> "bin";
         };
     }
 
@@ -482,9 +610,8 @@ public class MediaServiceImpl implements MediaService {
      * Format: https://cdn.connectsphere.com/media/{year}/{month}/{uuid}.ext
      */
     private String buildCdnUrl(String fileName) {
-        LocalDateTime now = LocalDateTime.now();
-        return String.format("%s/%d/%02d/%s",
-                cdnBaseUrl, now.getYear(), now.getMonthValue(), fileName);
+        // Points to our local media-service endpoint that serves files
+        return String.format("%s/%s", cdnBaseUrl, fileName);
     }
 
     /**
@@ -507,7 +634,7 @@ public class MediaServiceImpl implements MediaService {
      * Map Story entity → StoryResponseDTO.
      */
     private StoryResponseDTO toStoryResponseDTO(Story story) {
-        return StoryResponseDTO.builder()
+        StoryResponseDTO dto = StoryResponseDTO.builder()
                 .storyId(story.getStoryId())
                 .authorId(story.getAuthorId())
                 .mediaUrl(story.getMediaUrl())
@@ -517,6 +644,22 @@ public class MediaServiceImpl implements MediaService {
                 .expiresAt(story.getExpiresAt())
                 .createdAt(story.getCreatedAt())
                 .isActive(story.getIsActive())
+                .visibility(story.getVisibility())
                 .build();
+
+        // Fetch author profile details from auth-service
+        try {
+            ApiResponseDTO<java.util.Map<String, Object>> userRes = authServiceClient.getUserById(story.getAuthorId());
+            if (userRes != null && userRes.isSuccess() && userRes.getData() != null) {
+                java.util.Map<String, Object> userData = userRes.getData();
+                dto.setAuthorUsername((String) userData.get("username"));
+                dto.setAuthorProfilePic((String) userData.get("profilePicUrl"));
+            }
+        } catch (Exception e) {
+            log.error("Failed to fetch author details for story {}: {}", story.getStoryId(), e.getMessage());
+            dto.setAuthorUsername("Unknown");
+        }
+
+        return dto;
     }
 }

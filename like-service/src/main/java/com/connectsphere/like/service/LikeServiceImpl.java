@@ -245,6 +245,14 @@ public class LikeServiceImpl implements LikeService {
         return ApiResponseDTO.success("Reaction changed successfully", toDTO(saved));
     }
 
+    @Override
+    public ApiResponseDTO<LikeResponseDTO> getUserReaction(Integer userId, Integer targetId, TargetType targetType) {
+        log.debug("Fetching specific reaction for userId: {} on targetId: {}", userId, targetId);
+        return likeRepository.findByUserIdAndTargetIdAndTargetType(userId, targetId, targetType)
+                .map(like -> ApiResponseDTO.success("Reaction fetched", toDTO(like)))
+                .orElse(ApiResponseDTO.success("No reaction found", null));
+    }
+
     // PRIVATE HELPERS
 
     /**

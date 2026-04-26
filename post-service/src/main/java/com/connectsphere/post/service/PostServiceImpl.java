@@ -13,24 +13,10 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.Collectors;
 
-/**
- * PostServiceImpl - Business Logic Implementation
- *
- * Key flows:
- * 1. createPost()      -> Build Post entity from DTO + authorId from JWT
- *                      -> Save to DB -> Return PostResponseDTO
- * 2. getPostById()     -> Fetch by postId (non-deleted) -> Return DTO
- * 3. getFeedForUser()  -> Fetch posts WHERE authorId IN (followeeIds)
- *                      -> Ordered by createdAt DESC
- * 4. deletePost()      -> Ownership check -> softDeleteByPostId()
- * 5. incrementLikes()  -> Atomic UPDATE (no full entity load)
- *
- * authorId is NEVER taken from request body - always from JWT token
- * (extracted in JwtAuthenticationFilter and passed as method parameter by controller).
- */
 @Service
 @Slf4j
 @RequiredArgsConstructor
@@ -38,281 +24,134 @@ public class PostServiceImpl implements PostService {
 
     private final PostRepository postRepository;
     private final PostEventPublisher eventPublisher;
-
-    // CREATE POST
+    private final com.connectsphere.post.client.FollowServiceClient followServiceClient;
 
     @Override
     @Transactional
     public ApiResponseDTO<PostResponseDTO> createPost(Integer authorId, CreatePostRequestDTO request) {
-        log.info("Creating post for authorId: {}", authorId);
-
-        // Determine postType automatically if not explicitly set
-        PostType postType = request.getPostType();
-        if (postType == null) {
-            postType = (request.getMediaUrls() == null || request.getMediaUrls().isEmpty())
-                    ? PostType.TEXT
-                    : PostType.IMAGE;
+        PostType type = request.getPostType();
+        if (type == null) {
+            type = (request.getMediaUrls() == null || request.getMediaUrls().isEmpty()) ? PostType.TEXT : PostType.IMAGE;
         }
 
         Post post = Post.builder()
                 .authorId(authorId)
                 .content(request.getContent())
-                .mediaUrls(request.getMediaUrls() != null ? request.getMediaUrls() : List.of())
-                .postType(postType)
+                .mediaUrls(request.getMediaUrls() != null ? new ArrayList<>(request.getMediaUrls()) : new ArrayList<>())
+                .postType(type)
                 .visibility(request.getVisibility() != null ? request.getVisibility() : Visibility.PUBLIC)
-                .likesCount(0)
-                .commentsCount(0)
-                .sharesCount(0)
-                .isDeleted(false)
+                .isElite(request.getIsElite() != null ? request.getIsElite() : false)
                 .build();
 
         Post saved = postRepository.save(post);
-        log.info("Post created with postId: {}", saved.getPostId());
-
-        // Publish event for search-service to index hashtags
         eventPublisher.publishPostCreated(saved);
-
-        return ApiResponseDTO.success("Post created successfully", toDTO(saved));
+        return ApiResponseDTO.success("Post created", toDTO(saved));
     }
-
-    // READ OPERATIONS
 
     @Override
     public ApiResponseDTO<PostResponseDTO> getPostById(Integer postId) {
-        Post post = postRepository.findByPostIdAndIsDeletedFalse(postId)
-                .orElseThrow(() -> new PostNotFoundException(
-                        "Post not found with id: " + postId));
-        return ApiResponseDTO.success("Post fetched successfully", toDTO(post));
+        Post post = postRepository.findByPostIdAndIsDeletedFalse(postId).orElseThrow(() -> new PostNotFoundException("Not found"));
+        return ApiResponseDTO.success("Fetched", toDTO(post));
     }
 
     @Override
-    public ApiResponseDTO<List<PostResponseDTO>> getPostsByUser(Integer authorId) {
-        log.debug("Fetching posts for authorId: {}", authorId);
-        List<PostResponseDTO> posts = postRepository
-                .findByAuthorIdAndIsDeletedFalseOrderByCreatedAtDesc(authorId)
-                .stream()
-                .map(this::toDTO)
-                .collect(Collectors.toList());
-        return ApiResponseDTO.success("Posts fetched successfully", posts);
+    public ApiResponseDTO<List<PostResponseDTO>> getPostsByUser(Integer authorId, Integer requestingUserId, String authHeader) {
+        List<Post> posts = postRepository.findByAuthorIdAndIsDeletedFalseOrderByCreatedAtDesc(authorId);
+        return ApiResponseDTO.success("Fetched", posts.stream().map(this::toDTO).collect(Collectors.toList()));
     }
 
     @Override
-    public ApiResponseDTO<List<PostResponseDTO>> getFeedForUser(List<Integer> followeeIds) {
-        log.debug("Building feed for followeeIds count: {}", followeeIds.size());
+    public ApiResponseDTO<List<PostResponseDTO>> getFeedForUser(Integer requestingUserId, String authHeader) {
+        List<Integer> followeeIds = new ArrayList<>();
+        followeeIds.add(requestingUserId);
+        try {
+            ApiResponseDTO<List<Integer>> res = followServiceClient.getFolloweeIds(requestingUserId, authHeader);
+            if (res != null && res.getData() != null) followeeIds.addAll(res.getData());
+        } catch (Exception e) { log.error("Follow service error", e); }
 
-        if (followeeIds == null || followeeIds.isEmpty()) {
-            // Empty feed — user follows nobody yet
-            return ApiResponseDTO.success("Feed is empty", List.of());
-        }
-
-        List<PostResponseDTO> feed = postRepository.findFeedByUserIds(followeeIds)
-                .stream()
-                .map(this::toDTO)
-                .collect(Collectors.toList());
-
-        return ApiResponseDTO.success("Feed fetched successfully", feed);
+        List<PostResponseDTO> feed = postRepository.findFeedPersonalized(followeeIds, requestingUserId)
+                .stream().map(this::toDTO).collect(Collectors.toList());
+        return ApiResponseDTO.success("Feed fetched", feed);
     }
-
-    // UPDATE POST
 
     @Override
     @Transactional
-    public ApiResponseDTO<PostResponseDTO> updatePost(Integer postId, Integer requestingUserId,
-                                                       UpdatePostRequestDTO request) {
-        log.info("Update request for postId: {} by userId: {}", postId, requestingUserId);
-
-        Post post = findActivePostById(postId);
-        checkOwnership(post, requestingUserId);
-
-        // Store old content for re-indexing
-        String oldContent = post.getContent();
-
-        if (request.getContent() != null && !request.getContent().isBlank()) {
-            post.setContent(request.getContent());
-        }
-
-        Post updated = postRepository.save(post);
-        log.info("Post updated: {}", postId);
-
-        // Publish event for search-service to re-index hashtags
-        eventPublisher.publishPostUpdated(Post.builder()
-                .postId(post.getPostId())
-                .authorId(post.getAuthorId())
-                .content(oldContent)
-                .visibility(post.getVisibility())
-                .build(), updated);
-
-        return ApiResponseDTO.success("Post updated successfully", toDTO(updated));
+    public ApiResponseDTO<PostResponseDTO> updatePost(Integer postId, Integer requestingUserId, UpdatePostRequestDTO request) {
+        Post post = postRepository.findByPostIdAndIsDeletedFalse(postId).orElseThrow(() -> new PostNotFoundException("Not found"));
+        if (!post.getAuthorId().equals(requestingUserId)) throw new UnauthorizedActionException("Unauthorized");
+        if (request.getContent() != null) post.setContent(request.getContent());
+        return ApiResponseDTO.success("Updated", toDTO(postRepository.save(post)));
     }
-
-    // DELETE POST
 
     @Override
     @Transactional
-    public ApiResponseDTO<String> deletePost(Integer postId, Integer requestingUserId,
-                                              String requestingUserRole) {
-        log.info("Delete request for postId: {} by userId: {}", postId, requestingUserId);
-
-        Post post = findActivePostById(postId);
-
-        // Admin can delete any post; regular users can only delete their own
-        boolean isAdmin = "ADMIN".equalsIgnoreCase(requestingUserRole)
-                || "MODERATOR".equalsIgnoreCase(requestingUserRole);
-
-        if (!isAdmin) {
-            checkOwnership(post, requestingUserId);
-        }
-
+    public ApiResponseDTO<String> deletePost(Integer postId, Integer requestingUserId, String role) {
+        Post post = postRepository.findByPostIdAndIsDeletedFalse(postId).orElseThrow(() -> new PostNotFoundException("Not found"));
+        if (!"ADMIN".equals(role) && !post.getAuthorId().equals(requestingUserId)) throw new UnauthorizedActionException("Unauthorized");
         postRepository.softDeleteByPostId(postId);
-        log.info("Post soft-deleted: {}", postId);
-
-        // Publish event for search-service to remove index
         eventPublisher.publishPostDeleted(postId, post.getAuthorId());
-
-        return ApiResponseDTO.success("Post deleted successfully");
+        return ApiResponseDTO.success("Deleted");
     }
-
-    // SEARCH
 
     @Override
     public ApiResponseDTO<List<PostResponseDTO>> searchPosts(String keyword) {
-        log.debug("Searching posts with keyword: {}", keyword);
-        List<PostResponseDTO> results = postRepository.searchByContent(keyword)
-                .stream()
-                .map(this::toDTO)
-                .collect(Collectors.toList());
-        return ApiResponseDTO.success("Search results fetched", results);
+        return ApiResponseDTO.success("Results", postRepository.searchByContent(keyword).stream().map(this::toDTO).collect(Collectors.toList()));
     }
-
-    // COUNTER OPERATIONS (called by other microservices)
 
     @Override
     @Transactional
     public ApiResponseDTO<String> incrementLikes(Integer postId) {
-        ensurePostExists(postId);
         postRepository.incrementLikes(postId);
-        log.debug("Likes incremented for postId: {}", postId);
-        return ApiResponseDTO.success("Likes count incremented");
+        return ApiResponseDTO.success("Incremented");
     }
 
     @Override
     @Transactional
     public ApiResponseDTO<String> decrementLikes(Integer postId) {
-        ensurePostExists(postId);
         postRepository.decrementLikes(postId);
-        log.debug("Likes decremented for postId: {}", postId);
-        return ApiResponseDTO.success("Likes count decremented");
+        return ApiResponseDTO.success("Decremented");
     }
 
     @Override
     @Transactional
     public ApiResponseDTO<String> incrementComments(Integer postId) {
-        ensurePostExists(postId);
         postRepository.incrementComments(postId);
-        log.debug("Comments incremented for postId: {}", postId);
-        return ApiResponseDTO.success("Comments count incremented");
+        return ApiResponseDTO.success("Incremented");
     }
 
     @Override
     @Transactional
     public ApiResponseDTO<String> decrementComments(Integer postId) {
-        ensurePostExists(postId);
         postRepository.decrementComments(postId);
-        log.debug("Comments decremented for postId: {}", postId);
-        return ApiResponseDTO.success("Comments count decremented");
+        return ApiResponseDTO.success("Decremented");
     }
 
     @Override
     @Transactional
     public ApiResponseDTO<String> incrementShares(Integer postId) {
-        ensurePostExists(postId);
         postRepository.incrementShares(postId);
-        log.debug("Shares incremented for postId: {}", postId);
-        return ApiResponseDTO.success("Shares count incremented");
+        return ApiResponseDTO.success("Incremented");
     }
-
-    // CHANGE VISIBILITY
 
     @Override
     @Transactional
-    public ApiResponseDTO<PostResponseDTO> changeVisibility(Integer postId, Integer requestingUserId,
-                                                              String visibilityStr) {
-        log.info("Visibility change for postId: {} to: {}", postId, visibilityStr);
-
-        Post post = findActivePostById(postId);
-        checkOwnership(post, requestingUserId);
-
-        Visibility newVisibility;
-        try {
-            newVisibility = Visibility.valueOf(visibilityStr.toUpperCase());
-        } catch (IllegalArgumentException e) {
-            throw new IllegalArgumentException(
-                    "Invalid visibility value: " + visibilityStr +
-                    ". Allowed: PUBLIC, FOLLOWERS_ONLY, PRIVATE");
-        }
-
-        postRepository.updateVisibility(postId, newVisibility);
-        post.setVisibility(newVisibility);
-        log.info("Visibility updated for postId: {}", postId);
-        return ApiResponseDTO.success("Visibility updated successfully", toDTO(post));
+    public ApiResponseDTO<PostResponseDTO> changeVisibility(Integer postId, Integer requestingUserId, String visibility) {
+        Post post = postRepository.findByPostIdAndIsDeletedFalse(postId).orElseThrow(() -> new PostNotFoundException("Not found"));
+        if (!post.getAuthorId().equals(requestingUserId)) throw new UnauthorizedActionException("Unauthorized");
+        post.setVisibility(Visibility.valueOf(visibility.toUpperCase()));
+        return ApiResponseDTO.success("Updated", toDTO(postRepository.save(post)));
     }
-
-    // POST COUNT
 
     @Override
     public ApiResponseDTO<Integer> getPostCount(Integer authorId) {
-        int count = postRepository.countByAuthorIdAndIsDeletedFalse(authorId);
-        return ApiResponseDTO.success("Post count fetched", count);
+        return ApiResponseDTO.success("Count", postRepository.countByAuthorIdAndIsDeletedFalse(authorId));
     }
 
-    // PRIVATE HELPERS
-
-    /**
-     * Fetch active (not deleted) post by ID — throws if not found.
-     */
-    private Post findActivePostById(Integer postId) {
-        return postRepository.findByPostIdAndIsDeletedFalse(postId)
-                .orElseThrow(() -> new PostNotFoundException(
-                        "Post not found with id: " + postId));
-    }
-
-    /**
-     * Check that the requesting user is the owner of the post.
-     * Throws UnauthorizedActionException if they are not.
-     */
-    private void checkOwnership(Post post, Integer requestingUserId) {
-        if (!post.getAuthorId().equals(requestingUserId)) {
-            throw new UnauthorizedActionException(
-                    "You are not authorized to modify this post");
-        }
-    }
-
-    // PUBLIC FEED
     @Override
     public ApiResponseDTO<List<PostResponseDTO>> getPublicFeed() {
-        log.debug("Fetching public feed");
-        List<PostResponseDTO> posts = postRepository
-                .findByVisibilityAndIsDeletedFalseOrderByCreatedAtDesc(Visibility.PUBLIC)
-                .stream()
-                .map(this::toDTO)
-                .collect(Collectors.toList());
-        return ApiResponseDTO.success("Public feed fetched successfully", posts);
+        return ApiResponseDTO.success("Public feed", postRepository.findByVisibilityAndIsDeletedFalseOrderByCreatedAtDesc(Visibility.PUBLIC).stream().map(this::toDTO).collect(Collectors.toList()));
     }
 
-    /**
-     * Verify post exists (for counter increment/decrement operations).
-     * Throws PostNotFoundException if it doesn't exist or is deleted.
-     */
-    private void ensurePostExists(Integer postId) {
-        if (!postRepository.findByPostIdAndIsDeletedFalse(postId).isPresent()) {
-            throw new PostNotFoundException("Post not found with id: " + postId);
-        }
-    }
-
-    /**
-     * Map Post entity → PostResponseDTO.
-     * Never expose isDeleted in response.
-     */
     private PostResponseDTO toDTO(Post post) {
         return PostResponseDTO.builder()
                 .postId(post.getPostId())
@@ -326,6 +165,7 @@ public class PostServiceImpl implements PostService {
                 .sharesCount(post.getSharesCount())
                 .createdAt(post.getCreatedAt())
                 .updatedAt(post.getUpdatedAt())
+                .isElite(post.getIsElite())
                 .build();
     }
 }

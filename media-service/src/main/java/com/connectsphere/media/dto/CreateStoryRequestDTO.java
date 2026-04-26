@@ -45,4 +45,10 @@ public class CreateStoryRequestDTO {
      */
     @NotNull(message = "Media type is required (IMAGE or VIDEO)")
     private MediaType mediaType;
+
+    /**
+     * Visibility control - PUBLIC, FOLLOWERS_ONLY, or PRIVATE.
+     * Optional: defaults to PUBLIC on server if null.
+     */
+    private com.connectsphere.media.entity.Visibility visibility;
 }

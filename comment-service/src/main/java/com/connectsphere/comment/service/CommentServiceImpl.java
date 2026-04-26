@@ -88,7 +88,19 @@ public class CommentServiceImpl implements CommentService {
 
         // STEP 4 — Notify post-service to increment commentsCount
         notifyPostServiceIncrement(request.getPostId());
-        publishCommentNotification(authorId, postAuthorId, request.getPostId(), request.getParentCommentId());
+
+        // STEP 5 — Determine notification recipient
+        Integer recipientId = postAuthorId;
+        if (request.getParentCommentId() != null) {
+            recipientId = commentRepository.findById(request.getParentCommentId())
+                    .map(Comment::getAuthorId)
+                    .orElse(postAuthorId);
+        }
+
+        // Don't notify if user is replying to their own comment/post
+        if (!authorId.equals(recipientId)) {
+            publishCommentNotification(authorId, recipientId, request.getPostId(), request.getParentCommentId());
+        }
 
         return ApiResponseDTO.success("Comment added successfully", toDTO(saved));
     }

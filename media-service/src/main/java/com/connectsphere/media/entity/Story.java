@@ -104,4 +104,13 @@ public class Story {
     @Column(name = "is_active", nullable = false)
     @Builder.Default
     private Boolean isActive = true;
+
+    /**
+     * Visibility control - PUBLIC, FOLLOWERS_ONLY, or PRIVATE.
+     * Defaults to PUBLIC if not specified.
+     */
+    @Enumerated(EnumType.STRING)
+    @Column(name = "visibility", nullable = false, length = 20)
+    @Builder.Default
+    private Visibility visibility = Visibility.PUBLIC;
 }

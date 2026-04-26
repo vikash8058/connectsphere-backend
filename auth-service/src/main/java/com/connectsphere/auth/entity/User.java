@@ -113,4 +113,16 @@ public class User {
     @UpdateTimestamp
     @Column(name = "updated_at")
     private LocalDateTime updatedAt;
+
+    @Column(name = "is_elite", nullable = false)
+    @Builder.Default
+    private Boolean isElite = false;
+
+    @Column(name = "elite_until")
+    private LocalDateTime eliteUntil;
+
+    @com.fasterxml.jackson.annotation.JsonProperty("isPasswordSet")
+    public boolean isPasswordSet() {
+        return this.passwordHash != null;
+    }
 }

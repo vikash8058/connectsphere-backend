@@ -24,8 +24,6 @@
 
     <!-- Project properties -->
     <properties>
-        <mockito.version>5.14.2</mockito.version>
-        <byte-buddy.version>1.15.11</byte-buddy.version>
         <!-- Java version -->
         <java.version>17</java.version>
 
@@ -77,11 +75,6 @@
             <artifactId>spring-cloud-starter-netflix-eureka-client</artifactId>
         </dependency>
 
-        <!-- Spring Cloud Config (to fetch configuration from config server) -->
-        <dependency>
-            <groupId>org.springframework.cloud</groupId>
-            <artifactId>spring-cloud-starter-config</artifactId>
-        </dependency>
 
 		<!-- Spring Boot DevTools (Development only) -->
 		<dependency>
@@ -180,8 +173,6 @@
     <build>
         <plugins>
 
-
-
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-compiler-plugin</artifactId>
@@ -218,4 +209,3 @@
     </build>
 
 </project>
-

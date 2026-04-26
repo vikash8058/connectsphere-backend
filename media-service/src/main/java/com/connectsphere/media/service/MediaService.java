@@ -121,15 +121,27 @@ public interface MediaService {
     ApiResponseDTO<List<StoryResponseDTO>> getActiveStories(List<Integer> authorIds);
 
     /**
+     * Get all active stories for a personalized feed (self + followees).
+     * Automatically fetches followee list from follow-service.
+     *
+     * @param requestingUserId ID of the authenticated user
+     * @param authHeader      JWT token for follow-service call
+     * @return List of active StoryResponseDTO
+     */
+    ApiResponseDTO<List<StoryResponseDTO>> getActiveStoriesForUser(Integer requestingUserId, String authHeader);
+
+    /**
      * Increment view count for a story (another user opened it).
      * Only increments if the viewer is NOT the author.
+     * Enforces visibility rules: PUBLIC, FOLLOWERS_ONLY, or PRIVATE.
      * "Story view counts are incremented when another user opens a story" (case study 2.6)
      *
      * @param storyId         ID of the story being viewed
      * @param viewerUserId    ID of the user who opened the story
+     * @param authHeader      JWT token for follow-service call (if FOLLOWERS_ONLY)
      * @return Success message
      */
-    ApiResponseDTO<String> viewStory(Integer storyId, Integer viewerUserId);
+    ApiResponseDTO<String> viewStory(Integer storyId, Integer viewerUserId, String authHeader);
 
     /**
      * Author manually deletes their story before it expires.
@@ -150,6 +162,16 @@ public interface MediaService {
      * @return List of active StoryResponseDTO
      */
     ApiResponseDTO<List<StoryResponseDTO>> getStoriesByUser(Integer authorId);
+
+    /**
+     * Get a list of users who viewed a specific story.
+     * Only the story author can see this list.
+     *
+     * @param storyId          ID of the story
+     * @param requestingUserId ID of the authenticated user
+     * @return List of user profile maps (id, username, profilePicUrl)
+     */
+    ApiResponseDTO<List<java.util.Map<String, Object>>> getStoryViewers(Integer storyId, Integer requestingUserId);
 
     /**
      * Scheduler-triggered method to deactivate all expired stories.

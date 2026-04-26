@@ -171,6 +171,20 @@ public class NotificationServiceImpl implements NotificationService {
         notificationRepository.saveAll(notifications);
         log.info("Bulk notifications saved: count={}", notifications.size());
 
+        // ── ALSO SEND EMAILS FOR SYSTEM BROADCASTS ──
+        if ("SYSTEM".equalsIgnoreCase(request.getType())) {
+            for (Integer rid : request.getRecipientIds()) {
+                try {
+                    UserDataDTO userRes = authClient.getUserById(rid);
+                    if (userRes != null && userRes.getData() != null && userRes.getData().getEmail() != null) {
+                        sendEmailAlertAsync(userRes.getData().getEmail(), NotificationType.SYSTEM, request.getMessage());
+                    }
+                } catch (Exception e) {
+                    log.error("Failed to send broadcast email to user {}: {}", rid, e.getMessage());
+                }
+            }
+        }
+
         return ApiResponseDTO.success(
                 "Bulk notifications sent to " + notifications.size() + " recipients");
     }
@@ -234,7 +248,49 @@ public class NotificationServiceImpl implements NotificationService {
                 .map(this::toDTO)
                 .collect(Collectors.toList());
 
+        // Batch enrich with actor info (fetch unique actor details)
+        enrichWithActorInfo(result);
+
         return ApiResponseDTO.success("Notifications fetched successfully", result);
+    }
+
+    /**
+     * Enriches a list of notifications with actor details (username, profile pic)
+     * by calling auth-service for each unique actor ID.
+     */
+    private void enrichWithActorInfo(List<NotificationResponseDTO> dtos) {
+        if (dtos == null || dtos.isEmpty()) return;
+
+        java.util.Set<Integer> actorIds = dtos.stream()
+                .map(NotificationResponseDTO::getActorId)
+                .filter(id -> id != null && id > 0)
+                .collect(java.util.stream.Collectors.toSet());
+
+        java.util.Map<Integer, UserDataDTO.UserDTO> actorMap = new java.util.HashMap<>();
+        for (Integer actorId : actorIds) {
+            try {
+                UserDataDTO res = authClient.getUserById(actorId);
+                if (res != null && res.getData() != null) {
+                    actorMap.put(actorId, res.getData());
+                }
+            } catch (Exception e) {
+                log.warn("Failed to fetch actor info for enrichment (actorId={}): {}", actorId, e.getMessage());
+            }
+        }
+
+        for (NotificationResponseDTO dto : dtos) {
+            UserDataDTO.UserDTO actor = actorMap.get(dto.getActorId());
+            if (actor != null) {
+                dto.setActorUsername(actor.getUsername());
+                dto.setActorProfilePic(actor.getProfilePicUrl());
+                
+                // If the message is generic "Someone ...", update it with real name
+                if (dto.getMessage() != null && dto.getMessage().startsWith("Someone")) {
+                    String realName = actor.getFullName() != null ? actor.getFullName() : actor.getUsername();
+                    dto.setMessage(dto.getMessage().replace("Someone", realName));
+                }
+            }
+        }
     }
 
     // ── GET UNREAD COUNT (badge) ──
@@ -332,6 +388,7 @@ public class NotificationServiceImpl implements NotificationService {
                 .targetType(n.getTargetType())
                 .deepLinkUrl(n.getDeepLinkUrl())
                 .isRead(n.getIsRead())
+                .actorUsername(n.getActorId() == 0 ? "ConnectSphere" : "Someone") // ConnectSphere for system notifications
                 .createdAt(n.getCreatedAt())
                 .build();
     }
@@ -357,7 +414,7 @@ public class NotificationServiceImpl implements NotificationService {
     private boolean isHighPriorityEmailEvent(NotificationType type, Integer recipientId) {
         return switch (type) {
             case LIKE, COMMENT, REPLY, MENTION -> false; // in-app only — never email
-            case FOLLOW -> isFollowerMilestone(recipientId);  // email only on milestone
+            case SYSTEM, FOLLOW, PAYMENT_SUCCESS, SUBSCRIPTION_EXPIRY -> true;  // always email for these types
         };
     }
 
@@ -405,6 +462,9 @@ public class NotificationServiceImpl implements NotificationService {
             case REPLY   -> actorName + " replied to your comment";
             case FOLLOW  -> actorName + " started following you";
             case MENTION -> actorName + " mentioned you in a post";
+            case SYSTEM  -> actorName + " sent a system broadcast";
+            case PAYMENT_SUCCESS -> "Elite Status Activated! Welcome to the premium club.";
+            case SUBSCRIPTION_EXPIRY -> "Your Elite Status has expired. Renew now to keep your badge!";
         };
     }
 
@@ -415,14 +475,15 @@ public class NotificationServiceImpl implements NotificationService {
     @Async
     protected void sendEmailAlertAsync(String toEmail, NotificationType type, String message) {
         try {
-            // FOLLOW emails only reach here when isFollowerMilestone() returned true
             String subject = switch (type) {
+                case SYSTEM  -> "🔔 System Announcement — ConnectSphere";
                 case FOLLOW  -> "🎉 Milestone reached! You have a new follower — ConnectSphere";
-                // The cases below are here for completeness (admin can trigger via sendEmailAlert endpoint)
                 case LIKE    -> "Someone liked your post on ConnectSphere";
                 case COMMENT -> "New comment on your post — ConnectSphere";
                 case REPLY   -> "Someone replied to your comment — ConnectSphere";
                 case MENTION -> "You were mentioned on ConnectSphere";
+                case PAYMENT_SUCCESS -> "💳 Payment Successful — Welcome to ConnectSphere Elite!";
+                case SUBSCRIPTION_EXPIRY -> "⚠️ Subscription Expired — ConnectSphere Elite";
             };
 
             SimpleMailMessage mail = new SimpleMailMessage();

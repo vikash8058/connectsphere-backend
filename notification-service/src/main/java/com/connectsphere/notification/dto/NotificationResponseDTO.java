@@ -29,5 +29,7 @@ public class NotificationResponseDTO {
     private String targetType;
     private String deepLinkUrl;
     private Boolean isRead;
+    private String actorUsername;
+    private String actorProfilePic;
     private LocalDateTime createdAt;
 }

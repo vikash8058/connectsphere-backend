@@ -20,17 +20,18 @@ import lombok.*;
 public class UserDataDTO {
 
     private boolean success;
-    private UserInfo data;
+    private UserDTO data;
 
     @Getter
     @Setter
     @NoArgsConstructor
     @AllArgsConstructor
     @JsonIgnoreProperties(ignoreUnknown = true)
-    public static class UserInfo {
+    public static class UserDTO {
         private Integer userId;
         private String username;
         private String fullName;
         private String email;
+        private String profilePicUrl;
     }
 }

@@ -55,7 +55,13 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
                 String email  = claims.getSubject();
                 String role   = (String) claims.get("role");
-                Integer userId = (Integer) claims.get("userId");
+                
+                // Safer userId extraction — handle potential Long/Integer type mismatch from JSON parsing
+                Object userIdClaim = claims.get("userId");
+                Integer userId = null;
+                if (userIdClaim != null) {
+                    userId = Integer.valueOf(userIdClaim.toString());
+                }
 
                 // Set Spring Security authentication context
                 UsernamePasswordAuthenticationToken auth =

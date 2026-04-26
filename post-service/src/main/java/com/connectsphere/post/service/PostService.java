@@ -36,14 +36,13 @@ public interface PostService {
      * Get all posts by a specific user (their public timeline).
      * Only PUBLIC posts returned for non-authors.
      */
-    ApiResponseDTO<List<PostResponseDTO>> getPostsByUser(Integer authorId);
+    ApiResponseDTO<List<PostResponseDTO>> getPostsByUser(Integer authorId, Integer requestingUserId, String authHeader);
 
     /**
      * Personalised news feed — posts from followed users.
-     * followeeIds is provided by the caller (obtained from follow-service).
-     * Includes PUBLIC and FOLLOWERS_ONLY posts.
+     * Automatically fetches followee IDs using the requestingUserId.
      */
-    ApiResponseDTO<List<PostResponseDTO>> getFeedForUser(List<Integer> followeeIds);
+    ApiResponseDTO<List<PostResponseDTO>> getFeedForUser(Integer requestingUserId, String authHeader);
 
     /**
      * Update the text content of a post.

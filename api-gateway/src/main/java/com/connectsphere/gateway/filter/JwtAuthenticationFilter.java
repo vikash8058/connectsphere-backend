@@ -66,7 +66,7 @@ public class JwtAuthenticationFilter extends AbstractGatewayFilterFactory<JwtAut
                         .parseSignedClaims(token)
                         .getPayload();
 
-                String userId = claims.getSubject();
+                String userId = claims.get("userId", Integer.class).toString();
                 String role   = claims.get("role", String.class);
 
                 log.debug("JWT valid — userId: {}, role: {}", userId, role);

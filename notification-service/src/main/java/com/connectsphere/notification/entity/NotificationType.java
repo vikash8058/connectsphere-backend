@@ -9,11 +9,17 @@ package com.connectsphere.notification.entity;
  *   REPLY    - A user replied to your comment
  *   FOLLOW   - A user followed you
  *   MENTION  - A user mentioned you in a post or comment
+ *   SYSTEM   - A system generated notification
+ *   PAYMENT_SUCCESS - Razorpay payment successful
+ *   SUBSCRIPTION_EXPIRY - Elite subscription expired
  */
 public enum NotificationType {
     LIKE,
     COMMENT,
     REPLY,
     FOLLOW,
-    MENTION
+    MENTION,
+    SYSTEM,
+    PAYMENT_SUCCESS,
+    SUBSCRIPTION_EXPIRY
 }

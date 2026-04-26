@@ -49,22 +49,22 @@ public interface PostRepository extends JpaRepository<Post, Integer> {
     List<Post> findByVisibilityAndIsDeletedFalseOrderByCreatedAtDesc(Visibility visibility);
 
     /**
-     * Personalised news feed.
-     * Returns posts from all followees the current user follows.
-     * Includes PUBLIC and FOLLOWERS_ONLY posts only (not PRIVATE).
-     * Ordered newest first.
-     *
-     * authorIds = list of userId values the current user follows
-     * (provided by follow-service via inter-service call)
+     * Personalised and discovery news feed.
+     * 1. Shows ALL PUBLIC posts from everyone (Discovery).
+     * 2. Shows FOLLOWERS_ONLY posts from people you follow.
+     * 3. Shows ALL own posts (including PRIVATE).
      */
     @Query("""
             SELECT p FROM Post p
-            WHERE p.authorId IN :authorIds
-            AND p.isDeleted = false
-            AND p.visibility IN ('PUBLIC', 'FOLLOWERS_ONLY')
+            WHERE (p.visibility = com.connectsphere.post.entity.Visibility.PUBLIC AND p.isDeleted = false)
+            OR (p.authorId IN :authorIds AND p.visibility = com.connectsphere.post.entity.Visibility.FOLLOWERS_ONLY AND p.isDeleted = false)
+            OR (p.authorId = :userId AND p.isDeleted = false)
             ORDER BY p.createdAt DESC
             """)
-    List<Post> findFeedByUserIds(@Param("authorIds") List<Integer> authorIds);
+    List<Post> findFeedPersonalized(
+            @Param("authorIds") List<Integer> authorIds, 
+            @Param("userId") Integer userId
+    );
 
     /**
      * Full-text keyword search in post content.
