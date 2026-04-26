@@ -23,6 +23,7 @@ public interface OtpVerificationRepository extends JpaRepository<OtpVerification
             AND o.isUsed = false
             AND o.expiresAt > CURRENT_TIMESTAMP
             ORDER BY o.createdAt DESC
+            LIMIT 1
             """)
     Optional<OtpVerification> findValidOtp(
             @Param("email") String email,

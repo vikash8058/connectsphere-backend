@@ -23,6 +23,7 @@ import java.nio.charset.StandardCharsets;
  * Validates the Bearer token from the Authorization header.
  * On success, forwards userId and role as headers to downstream services.
  * On failure, returns 401 Unauthorized immediately.
+ *
  */
 @Component
 @Slf4j
