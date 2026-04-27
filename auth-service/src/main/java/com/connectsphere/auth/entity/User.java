@@ -7,17 +7,6 @@ import org.hibernate.annotations.UpdateTimestamp;
 
 import java.time.LocalDateTime;
 
-/**
- * User Entity - Maps to 'users' table in connectsphere_auth database
- *
- * Stores all user account information as per the ConnectSphere case study:
- *   userId, username, email, passwordHash, fullName, bio,
- *   profilePicUrl, role, provider, isActive, createdAt
- *
- * provider field supports LOCAL (email/password), GITHUB, GOOGLE OAuth2.
- * isActive is used for soft-delete / account suspension by Admin.
- * isEmailVerified gates login for LOCAL accounts.
- */
 @Entity
 @Table(name = "users")
 @Getter

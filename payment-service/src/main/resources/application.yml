@@ -5,7 +5,7 @@ spring:
   datasource:
     url: jdbc:mysql://localhost:3306/connectsphere_payment?createDatabaseIfNotExist=true&useSSL=false&serverTimezone=Asia/Kolkata
     username: root
-    password: savi2026
+    password: ${DB_PASSWORD}
     driver-class-name: com.mysql.cj.jdbc.Driver
 
   jpa:
@@ -33,11 +33,11 @@ eureka:
       defaultZone: http://localhost:8761/eureka/
 
 jwt:
-  secret: dGhpcytpcy1hLXZlcnkrc2VjdXJlK2tleStmb3Irand0
+  secret: ${JWT_SECRET}
 
 razorpay:
-  key-id: rzp_test_SbDER8b9DNfLu4
-  key-secret: 8Qh9ULRP3U5gByU2QMSsxQTg
+  key-id: ${RAZORPAY_KEY_ID}
+  key-secret: ${RAZORPAY_KEY_SECRET}
 
 connectsphere:
   notification:
