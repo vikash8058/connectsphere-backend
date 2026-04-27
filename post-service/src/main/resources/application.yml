@@ -48,9 +48,7 @@ eureka:
     prefer-ip-address: true
     instance-id: ${spring.application.name}:${server.port}
 
-# JWT secret must match auth-service exactly - used to validate tokens
-jwt:
-  secret: ${JWT_SECRET}
+
 
 # RabbitMQ — publishes post events to search-service for hashtag indexing
 post:
