@@ -8,20 +8,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
-/**
- * RabbitMQConfig - RabbitMQ configuration for Post Service
- *
- * post-service PUBLISHES to one exchange:
- *   connectsphere.post.exchange (Direct exchange)
- *
- * With three routing keys:
- *   post.created  → consumed by search-service for hashtag indexing
- *   post.updated  → consumed by search-service for hashtag re-indexing
- *   post.deleted  → consumed by search-service for index cleanup
- *
- * NOTE: search-service will declare the queues and bindings.
- * The exchange is idempotently declared on startup by both services.
- */
+
 @Configuration
 public class RabbitMQConfig {
 

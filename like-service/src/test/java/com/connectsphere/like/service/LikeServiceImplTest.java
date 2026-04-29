@@ -58,7 +58,7 @@ class LikeServiceImplTest {
     @InjectMocks
     private LikeServiceImpl likeService;
 
-    // ── Test Data ─────────────────────────────────────────────────────────────
+    // ── Test Data ──
 
     private Like buildLike(Integer likeId, Integer userId, Integer targetId,
                             TargetType targetType, ReactionType reactionType) {
@@ -72,7 +72,7 @@ class LikeServiceImplTest {
                 .build();
     }
 
-    // ── likeTarget() ──────────────────────────────────────────────────────────
+    // ── likeTarget() ─
 
     @Nested
     @DisplayName("likeTarget()")
@@ -255,7 +255,7 @@ class LikeServiceImplTest {
         }
     }
 
-    // ── unlikeTarget() ────────────────────────────────────────────────────────
+    // ── unlikeTarget() ───
 
     @Nested
     @DisplayName("unlikeTarget()")
@@ -352,7 +352,7 @@ class LikeServiceImplTest {
         }
     }
 
-    // ── hasLiked() ────────────────────────────────────────────────────────────
+    // ── hasLiked() ────
 
     @Nested
     @DisplayName("hasLiked()")
@@ -385,7 +385,7 @@ class LikeServiceImplTest {
         }
     }
 
-    // ── getLikesByTarget() ────────────────────────────────────────────────────
+    // ── getLikesByTarget() ───
 
     @Nested
     @DisplayName("getLikesByTarget()")
@@ -428,7 +428,7 @@ class LikeServiceImplTest {
         }
     }
 
-    // ── getLikesByUser() ──────────────────────────────────────────────────────
+    // ── getLikesByUser() ─
 
     @Nested
     @DisplayName("getLikesByUser()")
@@ -464,7 +464,7 @@ class LikeServiceImplTest {
         }
     }
 
-    // ── getLikeCount() ────────────────────────────────────────────────────────
+    // ── getLikeCount() ───
 
     @Nested
     @DisplayName("getLikeCount()")
@@ -497,7 +497,7 @@ class LikeServiceImplTest {
         }
     }
 
-    // ── getLikeCountByType() ──────────────────────────────────────────────────
+    // ── getLikeCountByType() ───
 
     @Nested
     @DisplayName("getLikeCountByType()")
@@ -545,7 +545,7 @@ class LikeServiceImplTest {
         }
     }
 
-    // ── getReactionSummary() ──────────────────────────────────────────────────
+    // ── getReactionSummary() ──
 
     @Nested
     @DisplayName("getReactionSummary()")
@@ -608,7 +608,7 @@ class LikeServiceImplTest {
         }
     }
 
-    // ── changeReaction() ──────────────────────────────────────────────────────
+    // ── changeReaction() ───
 
     @Nested
     @DisplayName("changeReaction()")

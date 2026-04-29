@@ -6,20 +6,7 @@ import org.hibernate.annotations.CreationTimestamp;
 
 import java.time.LocalDateTime;
 
-/**
- * PostHashtag Entity - Maps to 'post_hashtags' table in connectsphere_search database
- *
- * Fields as per ConnectSphere case study section 4.8:
- *   id         - Primary key, auto-increment
- *   postId     - References posts.post_id in post-service (cross-service, no DB FK)
- *   hashtagId  - References hashtags.hashtag_id in this service
- *   createdAt  - When this mapping was created
- *
- * Many-to-many join between posts and hashtags.
- * When a post contains #spring and #java, two PostHashtag rows are created.
- *
- * Unique constraint on (postId, hashtagId) ensures no duplicate mappings.
- */
+
 @Entity
 @Table(
     name = "post_hashtags",

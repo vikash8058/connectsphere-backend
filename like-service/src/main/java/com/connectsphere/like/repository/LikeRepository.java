@@ -12,20 +12,6 @@ import org.springframework.stereotype.Repository;
 import java.util.List;
 import java.util.Optional;
 
-/**
- * LikeRepository - Data Access Layer for Like Entity
- *
- * Custom queries as per ConnectSphere case study section 4.4:
- *   findByUserIdAndTargetId()             - Check if user reacted to a target
- *   findByTargetId()                      - All reactions on a target
- *   findByUserId()                        - All reactions by a user
- *   findByTargetIdAndTargetType()         - Reactions on a specific post/comment
- *   existsByUserIdAndTargetId()           - Boolean check for hasLiked()
- *   countByTargetId()                     - Total reactions on a target
- *   countByTargetIdAndTargetType()        - Total on a specific post/comment
- *   deleteByUserIdAndTargetId()           - Unlike (remove reaction)
- *   countByReactionTypeAndTargetId()      - Count by emoji type for reaction bars
- */
 @Repository
 public interface LikeRepository extends JpaRepository<Like, Integer> {
 

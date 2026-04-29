@@ -1,6 +1,7 @@
 package com.connectsphere.search.repository;
 
 import com.connectsphere.search.entity.Hashtag;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
@@ -10,19 +11,6 @@ import org.springframework.stereotype.Repository;
 import java.util.List;
 import java.util.Optional;
 
-/**
- * HashtagRepository - Data access layer for Hashtag entity
- *
- * Methods as per ConnectSphere case study section 4.8:
- *   findByTag()              - Exact tag lookup (for upsert)
- *   findTrendingHashtags()   - Top N by postCount DESC
- *   searchByTagContaining()  - Autocomplete / partial tag search
- *   countPostsByHashtag()    - Count posts using a specific tag
- *
- * Additional methods:
- *   incrementPostCount()     - Atomic increment when a post uses this tag
- *   decrementPostCount()     - Atomic decrement when a post is deleted
- */
 @Repository
 public interface HashtagRepository extends JpaRepository<Hashtag, Integer> {
 
@@ -39,7 +27,7 @@ public interface HashtagRepository extends JpaRepository<Hashtag, Integer> {
      * @param limit max number of hashtags to return
      */
     @Query("SELECT h FROM Hashtag h WHERE h.postCount > 0 ORDER BY h.postCount DESC")
-    List<Hashtag> findTrendingHashtags(org.springframework.data.domain.Pageable pageable);
+    List<Hashtag> findTrendingHashtags(Pageable pageable);
 
     /**
      * Partial tag search — for autocomplete in hashtag input fields.

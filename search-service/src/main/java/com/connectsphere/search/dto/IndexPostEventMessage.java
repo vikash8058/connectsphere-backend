@@ -5,17 +5,8 @@ import lombok.*;
 import java.util.List;
 
 /**
- * IndexPostEventMessage - RabbitMQ message published by post-service
- *
- * post-service publishes this message whenever a post is:
- *   - Created  → search-service indexes hashtags, adds PostHashtag mappings
- *   - Updated  → search-service re-indexes: removes old tags, adds new tags
- *   - Deleted  → search-service removes all PostHashtag mappings, decrements counts
- *
- * eventType values: "POST_CREATED", "POST_UPDATED", "POST_DELETED"
- *
- * content field is the full post text — search-service parses #hashtags from it.
- * For POST_DELETED, content can be null (postId is sufficient).
+ * IndexPostEventMessage - Message payload for post indexing events sent by post-service.
+ * Contains all info needed to index or remove a post from the search index.
  */
 @Getter
 @Setter

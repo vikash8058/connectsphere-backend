@@ -6,26 +6,7 @@ import org.hibernate.annotations.CreationTimestamp;
 
 import java.time.LocalDateTime;
 
-/**
- * Notification Entity - Maps to 'notifications' table in connectsphere_notification database
- *
- * Fields as per ConnectSphere case study section 4.6 (Notification-Service):
- *   notificationId - Primary key, auto-increment
- *   recipientId    - User who receives this notification (cross-service ref to auth-service)
- *   actorId        - User who triggered the event (who liked, followed, commented, etc.)
- *   type           - Event type: LIKE / COMMENT / REPLY / FOLLOW / MENTION
- *   message        - Human-readable notification message
- *   targetId       - ID of the target entity (postId or commentId)
- *   targetType     - What targetId refers to: "POST" or "COMMENT"
- *   deepLinkUrl    - Frontend URL to navigate to on notification click
- *   isRead         - false = unread (contributes to badge count), true = read
- *   createdAt      - Auto-set on INSERT
- *
- * Design notes:
- *   - recipientId and actorId are cross-service references (not DB foreign keys)
- *   - deepLinkUrl enables the notification badge to navigate the user to the right content
- *   - Notifications are never hard-deleted by users — only by admin cleanup jobs
- */
+
 @Entity
 @Table(
     name = "notifications",

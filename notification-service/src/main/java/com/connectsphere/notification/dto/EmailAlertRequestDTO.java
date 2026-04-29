@@ -4,16 +4,7 @@ import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
 import lombok.*;
 
-/**
- * EmailAlertRequestDTO - Payload for sending an email alert
- *
- * From case study section 4.6:
- *   "Email alerts are sent for high-priority events
- *    (e.g. account actions, new follower milestones)."
- *
- * Used internally by NotificationServiceImpl.sendEmailAlert()
- * and exposed via POST /notifications/email-alert (admin only).
- */
+
 @Getter
 @Setter
 @NoArgsConstructor

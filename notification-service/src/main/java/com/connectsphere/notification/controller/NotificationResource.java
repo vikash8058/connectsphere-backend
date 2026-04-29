@@ -16,29 +16,6 @@ import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
 
-/**
- * NotificationResource - REST Controller for ConnectSphere Notification Service
- *
- * Base path: /api/v1/notifications (via context-path in application.yml)
- *
- * PROTECTED (JWT required — user's own data):
- *   GET    /notifications/recipient/{recipientId}               - Get all notifications (optional ?isRead=)
- *   GET    /notifications/recipient/{recipientId}/unread-count  - Badge count for nav bar
- *   POST   /notifications/{id}/read                            - Mark one as read
- *   POST   /notifications/recipient/{recipientId}/read-all     - Mark all as read
- *   DELETE /notifications/{id}                                 - Delete one notification
- *
- * INTERNAL (service-to-service — no user JWT needed, open in SecurityConfig):
- *   POST   /notifications/internal                             - Create single notification
- *
- * ADMIN ONLY (ROLE_ADMIN via @PreAuthorize):
- *   POST   /notifications/bulk                                 - Broadcast to multiple users
- *   POST   /notifications/email-alert                         - Send email alert
- *   GET    /notifications/all                                 - Get all notifications (platform)
- *   GET    /notifications/type/{type}                         - Get by type
- *
- * userId is read from request attributes set by JwtAuthenticationFilter.
- */
 @RestController
 @RequestMapping("/notifications")
 @Slf4j

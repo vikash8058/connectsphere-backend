@@ -5,17 +5,7 @@ import lombok.*;
 
 import java.time.LocalDateTime;
 
-/**
- * MediaResponseDTO - Safe media data returned in API responses
- *
- * Returned after:
- *   - Successful file upload (/media/upload)
- *   - Fetching media by ID, by post, or by uploader
- *   - Linking media to a post
- *
- * The CDN url field is the key output — callers (post-service, frontend)
- * use this URL to reference the uploaded file in post/story creation.
- */
+
 @Getter
 @Setter
 @NoArgsConstructor

@@ -6,23 +6,7 @@ import org.hibernate.annotations.CreationTimestamp;
 
 import java.time.LocalDateTime;
 
-/**
- * Story Entity - Maps to 'stories' table in connectsphere_media database
- *
- * Fields as per ConnectSphere case study section 4.7 (Media/Story-Service):
- *   storyId    - Primary key, auto-increment
- *   authorId   - FK to users.user_id in auth-service (cross-service)
- *   mediaUrl   - CDN URL of the story's image or video
- *   caption    - Optional text caption for the story
- *   mediaType  - IMAGE / VIDEO (story media type)
- *   viewsCount - Incremented atomically each time another user views the story
- *   expiresAt  - createdAt + 24 hours (set at creation time)
- *   createdAt  - Auto-set on INSERT
- *   isActive   - false after expiry or manual deletion
- *
- * NFR: Stories are purged within 5 minutes of their 24-hour expiry
- * via StoryExpiryScheduler which runs every 5 minutes.
- */
+
 @Entity
 @Table(
     name = "stories",

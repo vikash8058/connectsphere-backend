@@ -5,31 +5,9 @@ import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
 
-/**
- * MediaService - Business Contract for Media/Story-Service
- *
- * Declares all operations as per ConnectSphere case study section 4.7:
- *
- * Media operations:
- *   uploadMedia()        - Upload file, validate, store, return CDN URL
- *   getMediaByPost()     - Get all media linked to a specific post
- *   getMediaById()       - Get single media item by ID
- *   deleteMedia()        - Soft-delete a media item
- *   softDeleteByPost()   - Soft-delete all media for a deleted post
- *   linkMediaToPost()    - Associate media with a post after creation
- *   getMediaByUploader() - Get all media uploaded by a user
- *
- * Story operations:
- *   createStory()        - Create a 24-hour ephemeral story
- *   getActiveStories()   - Get active stories from a list of followed users
- *   viewStory()          - Increment view count (another user opened the story)
- *   deleteStory()        - Author manually deletes their story
- *   getStoriesByUser()   - Get all stories (active) by a specific user
- *   expireOldStories()   - Called by scheduler to purge expired stories
- */
 public interface MediaService {
 
-    // ─── MEDIA OPERATIONS ────────────────────────────────────────────────────
+    // ─── MEDIA OPERATIONS ───
 
     /**
      * Upload a media file (image or video), validate MIME type and size,
@@ -61,7 +39,7 @@ public interface MediaService {
     /**
      * Soft-delete a media item.
      * Only the uploader can delete their own media.
-     * Record is retained for 30-day audit trail (NFR).
+     * Record is retained for 30-day audit trail.
      *
      * @param mediaId            ID of the media to delete
      * @param requestingUserId   ID of the authenticated user making the request
@@ -99,8 +77,7 @@ public interface MediaService {
      */
     ApiResponseDTO<List<MediaResponseDTO>> getMediaByUploader(Integer uploaderId);
 
-    // ─── STORY OPERATIONS ────────────────────────────────────────────────────
-
+    // ─── STORY OPERATIONS ────
     /**
      * Create a new 24-hour story.
      * Sets expiresAt = createdAt + 24 hours.

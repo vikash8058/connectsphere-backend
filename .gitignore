@@ -31,7 +31,7 @@ stop-all.ps1
 
 # IDE - VS Code
 .vscode/
-
+media-service/uploads/
 # OS
 .DS_Store
 Thumbs.db

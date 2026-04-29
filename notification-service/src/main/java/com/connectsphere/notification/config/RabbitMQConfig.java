@@ -8,20 +8,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
-/**
- * RabbitMQConfig - RabbitMQ infrastructure setup for notification-service
- *
- * Architecture:
- *   Direct Exchange: connectsphere.notification.exchange
- *   Queues:
- *     1. connectsphere.notification.queue      → single notification events
- *     2. connectsphere.notification.bulk.queue → admin bulk broadcasts
- *
- * Other services (like-service, comment-service, follow-service) publish to the exchange.
- * NotificationListener in this service consumes from the queues.
- *
- * JSON serialization: Jackson2JsonMessageConverter (not Java serialization)
- */
+
 @Configuration
 public class RabbitMQConfig {
 

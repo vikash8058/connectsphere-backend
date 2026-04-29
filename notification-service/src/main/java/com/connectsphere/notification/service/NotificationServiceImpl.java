@@ -16,28 +16,11 @@ import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
 
-/**
- * NotificationServiceImpl - Business Logic for Notification Service
- *
- * Key flows:
- *   1. createNotification()     → Self-notification check → Deduplication check
- *                               → Save → Return DTO
- *   2. sendBulkNotification()   → Build Notification per recipientId → saveAll()
- *   3. markAsRead()             → Ownership check → atomic UPDATE (no full entity load)
- *   4. markAllRead()            → atomic bulk UPDATE for recipient
- *   5. getByRecipient()         → Filter by isRead if provided → return list
- *   6. getUnreadCount()         → COUNT query → badge number
- *   7. deleteNotification()     → Ownership or ADMIN check → delete
- *   8. sendEmailAlert()         → JavaMailSender → @Async fire-and-forget
- *   9. getAll()                 → Admin: all notifications platform-wide
- *  10. getByType()              → Admin: filter by NotificationType
- *
- * RabbitMQ consumer (NotificationListener) calls createNotification() after
- * deserializing messages from the queue — same logic path as direct REST call.
- */
 @Service
 @Slf4j
 @RequiredArgsConstructor
@@ -266,7 +249,7 @@ public class NotificationServiceImpl implements NotificationService {
                 .filter(id -> id != null && id > 0)
                 .collect(java.util.stream.Collectors.toSet());
 
-        java.util.Map<Integer, UserDataDTO.UserDTO> actorMap = new java.util.HashMap<>();
+        Map<Integer, UserDataDTO.UserDTO> actorMap = new HashMap<>();
         for (Integer actorId : actorIds) {
             try {
                 UserDataDTO res = authClient.getUserById(actorId);
@@ -393,38 +376,14 @@ public class NotificationServiceImpl implements NotificationService {
                 .build();
     }
 
-    /**
-     * Determines whether an event type warrants an email alert.
-     *
-     * Per case study spec (section 2.5):
-     *   "Email alerts are sent for high-priority events
-     *    (e.g. account actions, new follower milestones)."
-     *
-     * Rules:
-     *   LIKE, COMMENT, REPLY, MENTION → in-app ONLY. No email.
-     *       Reason: these are high-volume social interactions.
-     *       1000 likes = 1000 emails → inbox spam.
-     *
-     *   FOLLOW → email only on milestone counts (100, 500, 1000 followers).
-     *       Regular follows → in-app only.
-     *
-     * Admin broadcast emails are handled separately via sendBulkNotification()
-     * and the explicit /notifications/email endpoint — not through this path.
-     */
+    // ── PRIVATE HELPER: Determine if an email alert should be sent for this notification type ──
     private boolean isHighPriorityEmailEvent(NotificationType type, Integer recipientId) {
         return switch (type) {
             case LIKE, COMMENT, REPLY, MENTION -> false; // in-app only — never email
             case SYSTEM, FOLLOW, PAYMENT_SUCCESS, SUBSCRIPTION_EXPIRY -> true;  // always email for these types
         };
     }
-
-    /**
-     * Returns true if the recipient's current follower count is a milestone
-     * worth sending an email about (100, 500, 1000, 5000, ...).
-     *
-     * We check AFTER the follow is already saved, so the count includes the new follower.
-     * This is a best-effort check — if the count query fails, no email is sent (safe default).
-     */
+    // ── PRIVATE HELPER: Check if a FOLLOW notification is a milestone (100, 500, 1000 followers) ──
     private boolean isFollowerMilestone(Integer recipientId) {
         if (recipientId == null) return false;
         try {
@@ -440,14 +399,7 @@ public class NotificationServiceImpl implements NotificationService {
         }
     }
 
-    /**
-     * Build a human-readable notification message using the actor's real name.
-     *
-     * Examples:
-     *   "Vikash Sharma liked your post"
-     *   "Rahul Kumar commented on your post"
-     *   "Priya Singh started following you"
-     */
+    // ── PRIVATE HELPER: Build a user-friendly message based on actor's name and notification type ──
     private String buildMessage(String actorName, NotificationType type, String fallbackMessage) {
         // If calling service already sent a meaningful message, use it
         // Replace "Someone" with the real name if present
@@ -486,6 +438,7 @@ public class NotificationServiceImpl implements NotificationService {
                 case SUBSCRIPTION_EXPIRY -> "⚠️ Subscription Expired — ConnectSphere Elite";
             };
 
+            //
             SimpleMailMessage mail = new SimpleMailMessage();
             mail.setFrom(fromEmail);
             mail.setTo(toEmail);

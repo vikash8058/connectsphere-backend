@@ -4,16 +4,7 @@ import com.connectsphere.notification.entity.NotificationType;
 import jakarta.validation.constraints.NotNull;
 import lombok.*;
 
-/**
- * CreateNotificationRequestDTO - Inbound payload to create a single notification
- *
- * Used by:
- *   1. Direct REST call from other microservices (like-service, comment-service, etc.)
- *   2. RabbitMQ message deserialization (NotificationEventMessage maps to this)
- *
- * actorId and recipientId come from the caller — never from JWT in this service.
- * (The notification service is called by other services, not by end-users directly.)
- */
+
 @Getter
 @Setter
 @NoArgsConstructor

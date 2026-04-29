@@ -27,24 +27,6 @@ import static org.assertj.core.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
-/**
- * MediaServiceImplTest — Unit tests for MediaServiceImpl
- *
- * Architecture: Controller → Service → Repository → DB
- * Test scope  : Service layer only (Mockito mocks for repositories)
- *
- * Test groups:
- *   UploadMediaTests       — file upload, MIME validation, size limits
- *   GetMediaTests          — getById, getByPost, getByUploader
- *   DeleteMediaTests       — own delete, admin delete, unauthorized delete
- *   LinkMediaToPostTests   — ownership check, successful link
- *   SoftDeleteByPostTests  — internal inter-service endpoint
- *   CreateStoryTests       — story creation, expiresAt calculation
- *   GetStoriesTests        — feed, by user, view count
- *   ViewStoryTests         — view increments, author self-view skip
- *   DeleteStoryTests       — own delete, admin delete, unauthorized
- *   ExpireStoriesTests     — scheduler batch expiry
- */
 @ExtendWith(MockitoExtension.class)
 @DisplayName("MediaServiceImpl Tests")
 class MediaServiceImplTest {
@@ -70,8 +52,7 @@ class MediaServiceImplTest {
     @InjectMocks
     private MediaServiceImpl mediaService;
 
-    // ── SETUP ────────────────────────────────────────────────────────────────
-
+    // ── SETUP ───
     @BeforeEach
     void setUp() {
         // Inject @Value fields via ReflectionTestUtils (Spring context not loaded)
@@ -80,17 +61,17 @@ class MediaServiceImplTest {
         ReflectionTestUtils.setField(mediaService, "maxVideoSizeKb",   102400L);
         ReflectionTestUtils.setField(mediaService, "allowedImageTypes", "image/jpeg,image/png,image/webp");
         ReflectionTestUtils.setField(mediaService, "allowedVideoTypes", "video/mp4");
+        ReflectionTestUtils.setField(mediaService, "storageBasePath",   "uploads");
 
         // Default mock for profile resolution to prevent "Unknown" author in all tests
         java.util.Map<String, Object> userData = new java.util.HashMap<>();
         userData.put("username", "testuser");
         userData.put("profilePicUrl", "test.jpg");
-        when(authServiceClient.getUserById(anyInt())).thenReturn(ApiResponseDTO.<java.util.Map<String, Object>>builder()
+        lenient().when(authServiceClient.getUserById(anyInt())).thenReturn(ApiResponseDTO.<java.util.Map<String, Object>>builder()
                 .success(true).data(userData).build());
     }
 
-    // ── HELPERS ──────────────────────────────────────────────────────────────
-
+    // ── HELPERS ─
     private Media buildMedia(Integer mediaId, Integer uploaderId, MediaType type, Integer linkedPostId) {
         return Media.builder()
                 .mediaId(mediaId)
@@ -127,10 +108,8 @@ class MediaServiceImplTest {
                 .build();
     }
 
-    // =========================================================================
-    // GROUP 1: UPLOAD MEDIA TESTS
-    // =========================================================================
 
+    // GROUP 1: UPLOAD MEDIA TESTS
     @Nested
     @DisplayName("Upload Media Tests")
     class UploadMediaTests {
@@ -275,9 +254,7 @@ class MediaServiceImplTest {
         }
     }
 
-    // =========================================================================
     // GROUP 2: GET MEDIA TESTS
-    // =========================================================================
 
     @Nested
     @DisplayName("Get Media Tests")
@@ -361,9 +338,7 @@ class MediaServiceImplTest {
         }
     }
 
-    // =========================================================================
     // GROUP 3: DELETE MEDIA TESTS
-    // =========================================================================
 
     @Nested
     @DisplayName("Delete Media Tests")
@@ -426,9 +401,8 @@ class MediaServiceImplTest {
         }
     }
 
-    // =========================================================================
+
     // GROUP 4: LINK MEDIA TO POST TESTS
-    // =========================================================================
 
     @Nested
     @DisplayName("Link Media To Post Tests")
@@ -457,7 +431,8 @@ class MediaServiceImplTest {
         @DisplayName("Should throw UnauthorizedActionException when non-uploader tries to link")
         void linkMediaToPost_nonUploader_throwsUnauthorized() {
             Media media = buildMedia(1, 3, MediaType.IMAGE, null); // owner = 3
-            when(postServiceClient.getPostById(10)).thenReturn(buildPostLookup(10, 7));
+            // leniency used because it fails before calling postServiceClient
+            lenient().when(postServiceClient.getPostById(10)).thenReturn(buildPostLookup(10, 7));
             when(mediaRepository.findByMediaIdAndIsDeletedFalse(1)).thenReturn(Optional.of(media));
 
             assertThatThrownBy(() -> mediaService.linkMediaToPost(1, 10, 7)) // requester = 7
@@ -483,7 +458,8 @@ class MediaServiceImplTest {
         @Test
         @DisplayName("Should throw MediaNotFoundException when media does not exist")
         void linkMediaToPost_notFound_throwsMediaNotFoundException() {
-            when(postServiceClient.getPostById(5)).thenReturn(buildPostLookup(5, 3));
+            // lenient because it fails on media lookup before post lookup
+            lenient().when(postServiceClient.getPostById(5)).thenReturn(buildPostLookup(5, 3));
             when(mediaRepository.findByMediaIdAndIsDeletedFalse(99)).thenReturn(Optional.empty());
 
             assertThatThrownBy(() -> mediaService.linkMediaToPost(99, 5, 3))
@@ -495,9 +471,11 @@ class MediaServiceImplTest {
         void linkMediaToPost_postMissing_throwsPostNotFoundException() {
             ApiResponseDTO<PostSummaryDTO> postMissing = ApiResponseDTO.<PostSummaryDTO>builder()
                     .success(false)
-                    .message("Post not found")
+                    .message("Post not found with id: 404")
                     .build();
 
+            Media media = buildMedia(1, 3, MediaType.IMAGE, null);
+            when(mediaRepository.findByMediaIdAndIsDeletedFalse(1)).thenReturn(Optional.of(media));
             when(postServiceClient.getPostById(404)).thenReturn(postMissing);
 
             assertThatThrownBy(() -> mediaService.linkMediaToPost(1, 404, 3))
@@ -519,6 +497,8 @@ class MediaServiceImplTest {
         @Test
         @DisplayName("Should soft-delete all media for a given postId")
         void softDeleteByPost_callsRepository() {
+            when(postServiceClient.getPostById(5)).thenReturn(buildPostLookup(5, 3));
+            when(mediaRepository.findByLinkedPostIdAndIsDeletedFalse(5)).thenReturn(List.of(buildMedia(1, 3, MediaType.IMAGE, 5)));
             doNothing().when(mediaRepository).softDeleteByLinkedPostId(5);
 
             ApiResponseDTO<String> response = mediaService.softDeleteByPost(5);
@@ -531,6 +511,8 @@ class MediaServiceImplTest {
         @Test
         @DisplayName("Should succeed even if post has no media (idempotent)")
         void softDeleteByPost_noMedia_noException() {
+            when(postServiceClient.getPostById(99)).thenReturn(buildPostLookup(99, 3));
+            when(mediaRepository.findByLinkedPostIdAndIsDeletedFalse(99)).thenReturn(List.of());
             doNothing().when(mediaRepository).softDeleteByLinkedPostId(99);
 
             assertThatCode(() -> mediaService.softDeleteByPost(99))

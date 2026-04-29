@@ -8,23 +8,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.amqp.rabbit.annotation.RabbitListener;
 import org.springframework.stereotype.Component;
 
-/**
- * NotificationListener - RabbitMQ consumer for notification events
- *
- * Listens to the notification queue and processes incoming messages
- * published by other services (like-service, comment-service, follow-service).
- *
- * Flow:
- *   other-service → rabbitTemplate.convertAndSend(exchange, routingKey, message)
- *   → connectsphere.notification.queue
- *   → handleNotificationEvent() → notificationService.createNotification()
- *
- * If processing fails, RabbitMQ will re-queue the message by default,
- * ensuring delivery reliability.
- *
- * JSON deserialization is handled automatically by Jackson2JsonMessageConverter
- * configured in RabbitMQConfig.
- */
+
 @Component
 @Slf4j
 @RequiredArgsConstructor

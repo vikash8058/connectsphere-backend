@@ -47,14 +47,14 @@ public class RabbitMQConfig {
     @Value("${search.rabbitmq.post-deleted-routing-key}")
     private String postDeletedRoutingKey;
 
-    // ── Exchange ──────────────────────────────────────────────────────────────
+    // ── Exchange ─
 
     @Bean
     public DirectExchange postExchange() {
         return new DirectExchange(postExchange, true, false);
     }
 
-    // ── Queues ────────────────────────────────────────────────────────────────
+    // ── Queues ─
 
     @Bean
     public Queue postCreatedQueue() {
@@ -71,7 +71,7 @@ public class RabbitMQConfig {
         return QueueBuilder.durable(postDeletedQueue).build();
     }
 
-    // ── Bindings ──────────────────────────────────────────────────────────────
+    // ── Bindings ────
 
     @Bean
     public Binding postCreatedBinding() {
@@ -97,7 +97,7 @@ public class RabbitMQConfig {
                 .with(postDeletedRoutingKey);
     }
 
-    // ── JSON Converter (same as all other services) ───────────────────────────
+    // ── JSON Converter (same as all other services) ──
 
     @Bean
     public Jackson2JsonMessageConverter messageConverter() {

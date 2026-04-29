@@ -8,7 +8,6 @@ spring:
     name: media-service
 
   # MySQL Database Configuration
-  # Each microservice owns its own schema (case study section 5)
   datasource:
     url: jdbc:mysql://localhost:3306/connectsphere_media?createDatabaseIfNotExist=true&useSSL=false&serverTimezone=UTC&allowPublicKeyRetrieval=true
     username: root

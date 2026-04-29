@@ -11,26 +11,7 @@ import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
 
-/**
- * SearchResource - REST Controller for ConnectSphere Search/Hashtag Service
- *
- * Base path: /api/v1 (via context-path in application.yml)
- *
- * Endpoints split into two groups:
- *   /search/**   → post search and user search
- *   /hashtags/** → hashtag feed, trending, autocomplete, counts
- *
- * Public endpoints (no JWT required — guests can search):
- *   GET /search/posts?keyword=
- *   GET /search/users?query=
- *   GET /hashtags/trending
- *   GET /hashtags/{tag}/posts
- *   GET /hashtags/search?query=
- *   GET /hashtags/{tag}/count
- *   GET /hashtags/post/{postId}
- *
- * All public per case study section 2.2 — guests can search users and hashtags.
- */
+
 @RestController
 @Slf4j
 @RequiredArgsConstructor
@@ -39,7 +20,7 @@ public class SearchResource {
 
     private final SearchService searchService;
 
-    // ── SEARCH ENDPOINTS ──────────────────────────────────────────────────────
+    // ── SEARCH ENDPOINTS ───
 
     /**
      * Full-text keyword search across posts.
@@ -71,7 +52,7 @@ public class SearchResource {
         return ResponseEntity.ok(searchService.searchUsers(query));
     }
 
-    // ── HASHTAG ENDPOINTS ─────────────────────────────────────────────────────
+    // ── HASHTAG ENDPOINTS ────
 
     /**
      * Get top N trending hashtags ordered by postCount DESC.

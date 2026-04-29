@@ -11,19 +11,7 @@ import org.springframework.stereotype.Repository;
 import java.util.List;
 import java.util.Optional;
 
-/**
- * FollowRepository - Data Access Layer for Follow Entity
- *
- * Custom queries as per ConnectSphere case study section 4.5:
- *   findByFollowerIdAndFolloweeId()          - Check specific follow relationship
- *   findByFollowerId()                        - All users this person follows
- *   findByFolloweeId()                        - All followers of a person
- *   existsByFollowerIdAndFolloweeId()         - Boolean check for isFollowing()
- *   countByFollowerId()                       - Following count
- *   countByFolloweeId()                       - Follower count
- *   findMutualFollows()                       - Mutual connections
- *   deleteByFollowerIdAndFolloweeId()         - Unfollow
- */
+
 @Repository
 public interface FollowRepository extends JpaRepository<Follow, Integer> {
 

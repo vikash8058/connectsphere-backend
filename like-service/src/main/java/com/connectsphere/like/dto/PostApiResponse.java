@@ -16,7 +16,10 @@ public class PostApiResponse {
     private boolean success;
     private PostData data;
 
-    @Getter @Setter @NoArgsConstructor @AllArgsConstructor
+    @Getter
+    @Setter
+    @NoArgsConstructor
+    @AllArgsConstructor
     @JsonIgnoreProperties(ignoreUnknown = true)
     public static class PostData {
         private Integer postId;

@@ -16,32 +16,6 @@ import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
 
-/**
- * MediaResource - REST Controller for ConnectSphere Media/Story-Service
- *
- * Base path: /api/v1  (via context-path in application.yml)
- *
- * MEDIA ENDPOINTS (all require authentication):
- *   POST   /media/upload                          - Upload image or video file
- *   GET    /media/{mediaId}                       - Get media item by ID
- *   GET    /media/post/{postId}                   - Get all media linked to a post
- *   GET    /media/uploader/{uploaderId}            - Get all media by a user
- *   DELETE /media/{mediaId}                       - Soft-delete media (own or admin)
- *   PATCH  /media/{mediaId}/link/{postId}         - Link media to a post
- *
- * INTERNAL MEDIA ENDPOINTS (inter-service, JWT required):
- *   DELETE /media/post/{postId}/soft-delete       - Soft-delete all media for a deleted post
- *
- * STORY ENDPOINTS (all require authentication):
- *   POST   /stories                               - Create a 24-hour story
- *   GET    /stories/feed?authorIds=1,2,3          - Get active stories from followed users
- *   GET    /stories/{storyId}/view                - View story (increments count)
- *   GET    /stories/user/{authorId}               - Get all active stories by a user
- *   DELETE /stories/{storyId}                     - Delete story (own or admin)
- *
- * userId and role are read from request attributes set by JwtAuthenticationFilter.
- * They are NEVER read from the request body to prevent spoofing.
- */
 @RestController
 @Slf4j
 @RequiredArgsConstructor
@@ -53,7 +27,7 @@ public class MediaResource {
     @org.springframework.beans.factory.annotation.Value("${media.storage-base-path}")
     private String storageBasePath;
 
-    // ─── MEDIA ENDPOINTS ─────────────────────────────────────────────────────
+    // ─── MEDIA ENDPOINTS ───
 
     /**
      * Upload an image or video file.
@@ -159,7 +133,7 @@ public class MediaResource {
         return ResponseEntity.ok(mediaService.softDeleteByPost(postId));
     }
 
-    // ─── STORY ENDPOINTS ─────────────────────────────────────────────────────
+    // ─── STORY ENDPOINTS ──
 
     /**
      * Create a new 24-hour story.
@@ -282,7 +256,7 @@ public class MediaResource {
         }
     }
 
-    // ─── PRIVATE HELPERS ─────────────────────────────────────────────────────
+    // ─── PRIVATE HELPERS ─────
 
     /**
      * Extract userId set by JwtAuthenticationFilter from request attribute.

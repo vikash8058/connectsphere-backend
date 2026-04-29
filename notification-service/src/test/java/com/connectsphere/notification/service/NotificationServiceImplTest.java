@@ -22,22 +22,7 @@ import static org.assertj.core.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
-/**
- * NotificationServiceImplTest - Unit tests for Notification Service business logic
- *
- * Uses Mockito to mock NotificationRepository and JavaMailSender.
- * No Spring context — fast, isolated unit tests.
- *
- * Tests cover:
- *   - createNotification (success, duplicate, self-notification)
- *   - markAsRead (owner, non-owner, not found)
- *   - markAllRead
- *   - getByRecipient (all, filter by isRead)
- *   - getUnreadCount
- *   - deleteNotification (owner, admin, unauthorized, not found)
- *   - sendBulkNotification (success, empty recipients)
- *   - sendEmailAlert (success, failure)
- */
+
 @ExtendWith(MockitoExtension.class)
 @DisplayName("NotificationServiceImpl Unit Tests")
 class NotificationServiceImplTest {
@@ -57,7 +42,7 @@ class NotificationServiceImplTest {
                 "fromEmail", "noreply@connectsphere.com");
     }
 
-    // ── Test Data Helpers ──────────────────────────────────────────────────────
+    // ── Test Data Helpers ───
 
     private Notification buildNotification(Integer id, Integer recipientId, Integer actorId,
                                             NotificationType type, boolean isRead) {
@@ -89,7 +74,7 @@ class NotificationServiceImplTest {
                 .build();
     }
 
-    // ── createNotification ────────────────────────────────────────────────────
+    // ── createNotification ───
 
     @Nested
     @DisplayName("createNotification()")
@@ -180,7 +165,7 @@ class NotificationServiceImplTest {
         }
     }
 
-    // ── markAsRead ────────────────────────────────────────────────────────────
+    // ── markAsRead ───
 
     @Nested
     @DisplayName("markAsRead()")
@@ -226,7 +211,7 @@ class NotificationServiceImplTest {
         }
     }
 
-    // ── markAllRead ───────────────────────────────────────────────────────────
+    // ── markAllRead ───
 
     @Nested
     @DisplayName("markAllRead()")
@@ -243,7 +228,7 @@ class NotificationServiceImplTest {
         }
     }
 
-    // ── getByRecipient ────────────────────────────────────────────────────────
+    // ── getByRecipient ────
 
     @Nested
     @DisplayName("getByRecipient()")
@@ -297,7 +282,7 @@ class NotificationServiceImplTest {
         }
     }
 
-    // ── getUnreadCount ────────────────────────────────────────────────────────
+    // ── getUnreadCount ───
 
     @Nested
     @DisplayName("getUnreadCount()")
@@ -327,7 +312,7 @@ class NotificationServiceImplTest {
         }
     }
 
-    // ── deleteNotification ────────────────────────────────────────────────────
+    // ── deleteNotification ───
 
     @Nested
     @DisplayName("deleteNotification()")
@@ -389,8 +374,7 @@ class NotificationServiceImplTest {
         }
     }
 
-    // ── sendBulkNotification ──────────────────────────────────────────────────
-
+    // ── sendBulkNotification ───
     @Nested
     @DisplayName("sendBulkNotification()")
     class BulkNotificationTests {
@@ -444,7 +428,7 @@ class NotificationServiceImplTest {
         }
     }
 
-    // ── sendEmailAlert ────────────────────────────────────────────────────────
+    // ── sendEmailAlert ───
 
     @Nested
     @DisplayName("sendEmailAlert()")
