@@ -6,18 +6,6 @@ import org.hibernate.annotations.UpdateTimestamp;
 
 import java.time.LocalDateTime;
 
-/**
- * Hashtag Entity - Maps to 'hashtags' table in connectsphere_search database
- *
- * Fields as per ConnectSphere case study section 4.8:
- *   hashtagId  - Primary key, auto-increment
- *   tag        - The hashtag text (unique, lowercase, no # prefix stored)
- *   postCount  - Denormalised count of posts using this tag (for trending ranking)
- *   lastUsedAt - Last time any post used this tag (for trending window queries)
- *
- * Upserted on every new post or post update containing the tag.
- * postCount drives getTrendingHashtags() — ORDER BY postCount DESC.
- */
 @Entity
 @Table(
     name = "hashtags",

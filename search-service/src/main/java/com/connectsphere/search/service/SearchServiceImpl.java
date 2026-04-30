@@ -19,17 +19,7 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
-/**
- * SearchServiceImpl - Business logic for Search/Hashtag Service
- *
- * Core responsibilities (case study section 4.8):
- *   1. Parse #hashtag tokens from post content using regex
- *   2. Upsert Hashtag records and create PostHashtag mappings on indexPost()
- *   3. Diff old/new hashtags on reIndexPost() to avoid redundant DB ops
- *   4. Remove index cleanly on post deletion
- *   5. Return trending hashtags by postCount DESC
- *   6. Delegate post/user search to post-service and auth-service via Feign
- */
+
 @Service
 @RequiredArgsConstructor
 @Slf4j
@@ -47,8 +37,7 @@ public class SearchServiceImpl implements SearchService {
      */
     private static final Pattern HASHTAG_PATTERN = Pattern.compile("#(\\w+)");
 
-    // ── INDEX POST ────────────────────────────────────────────────────────────
-
+    // ── INDEX POST ──
     /**
      * Index a new post:
      *   1. Parse #tags from content
@@ -73,6 +62,7 @@ public class SearchServiceImpl implements SearchService {
         }
 
         Set<String> tags = extractHashtags(content);
+
         if (tags.isEmpty()) {
             log.debug("indexPost — no hashtags found in postId={}", postId);
             return;
@@ -160,7 +150,7 @@ public class SearchServiceImpl implements SearchService {
         postHashtagRepository.deleteByPostId(postId);
     }
 
-    // ── SEARCH POSTS ──────────────────────────────────────────────────────────
+    // ── SEARCH POSTS ─────
 
     /**
      * Full-text keyword search across posts.
@@ -225,8 +215,7 @@ public class SearchServiceImpl implements SearchService {
         }
     }
 
-    // ── HASHTAGS ──────────────────────────────────────────────────────────────
-
+    // ── HASHTAGS ───
     /**
      * Get all hashtags on a specific post.
      */
@@ -319,7 +308,7 @@ public class SearchServiceImpl implements SearchService {
         return ApiResponseDTO.success("Hashtag count fetched", count);
     }
 
-    // ── PRIVATE HELPERS ───────────────────────────────────────────────────────
+    // ── PRIVATE HELPERS ──
 
     /**
      * Extract all #hashtag tokens from post content.

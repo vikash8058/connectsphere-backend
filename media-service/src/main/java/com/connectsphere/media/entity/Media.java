@@ -6,20 +6,7 @@ import org.hibernate.annotations.CreationTimestamp;
 
 import java.time.LocalDateTime;
 
-/**
- * Media Entity - Maps to 'media' table in connectsphere_media database
- *
- * Fields as per ConnectSphere case study section 4.7 (Media/Story-Service):
- *   mediaId      - Primary key, auto-increment
- *   uploaderId   - FK to users.user_id in auth-service (cross-service, not a DB FK)
- *   url          - Full CDN URL of the uploaded file (e.g. https://cdn.connectsphere.com/media/abc.jpg)
- *   mediaType    - IMAGE / VIDEO (enum)
- *   sizeKb       - File size in kilobytes (for enforcement of size limits NFR)
- *   mimeType     - Actual MIME type (image/jpeg, image/png, image/webp, video/mp4)
- *   linkedPostId - ID of the post this media is attached to (nullable — set after post creation)
- *   uploadedAt   - Timestamp of upload (auto-set on INSERT)
- *   isDeleted    - Soft delete flag; true when linked post is deleted (NFR: 30-day audit retention)
- */
+
 @Entity
 @Table(
     name = "media",

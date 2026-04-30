@@ -115,7 +115,9 @@ public class AuthServiceImpl implements AuthService {
             return ApiResponseDTO.success("Logged out");
         BlacklistedToken bt = new BlacklistedToken();
         bt.setToken(token);
-        bt.setExpiryDate(LocalDateTime.now().plusHours(1)); // Simple default
+        // Extract actual expiration from token as expected by tests
+        Date expiry = jwtTokenProvider.extractExpiration(token);
+        bt.setExpiryDate(expiry.toInstant().atZone(ZoneId.systemDefault()).toLocalDateTime());
         blacklistedTokenRepository.save(bt);
         return ApiResponseDTO.success("Logged out");
     }
@@ -137,65 +139,73 @@ public class AuthServiceImpl implements AuthService {
 
     @Override
     public ApiResponseDTO<User> getUserById(Integer userId) {
-        return ApiResponseDTO.success("Fetched",
-                userRepository.findById(userId).orElseThrow(() -> new UserNotFoundException("Not found")));
+        return ApiResponseDTO.success("User fetched successfully",
+                userRepository.findById(userId).orElseThrow(() -> new UserNotFoundException("User not found with ID: " + userId)));
     }
 
     @Override
     public ApiResponseDTO<User> getUserByEmail(String email) {
-        return ApiResponseDTO.success("Fetched",
-                userRepository.findByEmail(email).orElseThrow(() -> new UserNotFoundException("Not found")));
+        return ApiResponseDTO.success("User fetched successfully",
+                userRepository.findByEmail(email).orElseThrow(() -> new UserNotFoundException("User not found with email: " + email)));
     }
 
     @Override
     @Transactional
     public ApiResponseDTO<User> updateProfileByEmail(String email, UpdateProfileRequestDTO request) {
-        User user = userRepository.findByEmail(email).orElseThrow(() -> new UserNotFoundException("Not found"));
-        if (request.getUsername() != null)
+        User user = userRepository.findByEmail(email).orElseThrow(() -> new UserNotFoundException("User not found with email: " + email));
+        if (request.getUsername() != null && !request.getUsername().equals(user.getUsername())) {
+            if (userRepository.existsByUsername(request.getUsername())) {
+                throw new UserAlreadyExistsException("Username taken");
+            }
             user.setUsername(request.getUsername());
+        }
         if (request.getFullName() != null)
             user.setFullName(request.getFullName());
         if (request.getBio() != null)
             user.setBio(request.getBio());
         if (request.getProfilePicUrl() != null)
             user.setProfilePicUrl(request.getProfilePicUrl());
-        return ApiResponseDTO.success("Updated", userRepository.save(user));
+        return ApiResponseDTO.success("Profile updated successfully", userRepository.save(user));
     }
 
     @Override
     @Transactional
     public ApiResponseDTO<String> changePassword(String email, ChangePasswordRequestDTO request) {
-        User user = userRepository.findByEmail(email).orElseThrow(() -> new UserNotFoundException("Not found"));
+        User user = userRepository.findByEmail(email).orElseThrow(() -> new UserNotFoundException("User not found with email: " + email));
         if (!passwordEncoder.matches(request.getCurrentPassword(), user.getPasswordHash()))
             throw new InvalidCredentialsException("Wrong pass");
+        if (!request.getNewPassword().equals(request.getConfirmPassword()))
+            throw new IllegalArgumentException("Passwords do not match");
         user.setPasswordHash(passwordEncoder.encode(request.getNewPassword()));
         userRepository.save(user);
-        return ApiResponseDTO.success("Changed");
+        return ApiResponseDTO.success("Password changed successfully");
     }
 
     @Override
     @Transactional
     public ApiResponseDTO<String> setInitialPassword(String email, SetPasswordRequestDTO request) {
-        User user = userRepository.findByEmail(email).orElseThrow(() -> new UserNotFoundException("Not found"));
+        User user = userRepository.findByEmail(email).orElseThrow(() -> new UserNotFoundException("User not found with email: " + email));
         user.setPasswordHash(passwordEncoder.encode(request.getNewPassword()));
         userRepository.save(user);
-        return ApiResponseDTO.success("Set");
+        return ApiResponseDTO.success("Password set successfully");
     }
 
     @Override
     @Transactional
     public ApiResponseDTO<String> deactivateUser(Integer userId) {
+        if (!userRepository.existsById(userId))
+            throw new UserNotFoundException("User not found with ID: " + userId);
         userRepository.deactivateByUserId(userId);
-        return ApiResponseDTO.success("Deactivated");
+        return ApiResponseDTO.success("User deactivated successfully");
     }
 
     @Override
     @Transactional
     public ApiResponseDTO<String> reactivateUser(Integer userId) {
-        User user = userRepository.findById(userId).orElseThrow(() -> new UserNotFoundException("Not found"));
+        User user = userRepository.findById(userId).orElseThrow(() -> new UserNotFoundException("User not found with ID: " + userId));
         user.setIsActive(true);
         userRepository.save(user);
-        return ApiResponseDTO.success("Reactivated");
+        return ApiResponseDTO.success("User reactivated successfully");
     }
 
     @Override
@@ -216,15 +226,29 @@ public class AuthServiceImpl implements AuthService {
     @Override
     @Transactional
     public ApiResponseDTO<String> deleteUser(Integer adminId, Integer targetUserId) {
+        if (adminId.equals(targetUserId))
+            throw new UnauthorizedAccessException("Cannot delete own account");
+        if (!userRepository.existsById(targetUserId))
+            throw new UserNotFoundException("User not found with ID: " + targetUserId);
         userRepository.deleteByUserId(targetUserId);
-        return ApiResponseDTO.success("Deleted");
+        return ApiResponseDTO.success("User deleted successfully");
     }
 
     @Override
     @Transactional
     public ApiResponseDTO<String> assignRole(Integer adminId, Integer targetUserId, String role) {
-        userRepository.updateRoleByUserId(targetUserId, Role.valueOf(role.toUpperCase()));
-        return ApiResponseDTO.success("Role assigned");
+        if (adminId.equals(targetUserId))
+            throw new UnauthorizedAccessException("Cannot change own role");
+        userRepository.findById(targetUserId).orElseThrow(() -> new UserNotFoundException("User not found with ID: " + targetUserId));
+        
+        Role targetRole;
+        try {
+            targetRole = Role.valueOf(role.toUpperCase());
+        } catch (IllegalArgumentException e) {
+            throw new IllegalArgumentException("Invalid role: " + role);
+        }
+        userRepository.updateRoleByUserId(targetUserId, targetRole);
+        return ApiResponseDTO.success("Role assigned successfully to " + targetRole);
     }
 
     @Override
@@ -235,6 +259,9 @@ public class AuthServiceImpl implements AuthService {
     @Override
     @Transactional
     public ApiResponseDTO<String> forgotPassword(String email) {
+        if (!userRepository.existsByEmail(email)) {
+            return ApiResponseDTO.success("OTP sent.");
+        }
         sendOtpToEmail(email, OtpType.PASSWORD_RESET);
         return ApiResponseDTO.success("OTP sent.");
     }
@@ -242,11 +269,14 @@ public class AuthServiceImpl implements AuthService {
     @Override
     @Transactional
     public ApiResponseDTO<String> resetPassword(String email, String newPassword) {
-        User user = userRepository.findByEmail(email).orElseThrow(() -> new UserNotFoundException("Not found"));
+        User user = userRepository.findByEmail(email).orElseThrow(() -> new UserNotFoundException("User not found with email: " + email));
+        if (!user.getIsPasswordResetVerified()) {
+            throw new InvalidOtpException("OTP not verified first");
+        }
         user.setPasswordHash(passwordEncoder.encode(newPassword));
         user.setIsPasswordResetVerified(false);
         userRepository.save(user);
-        return ApiResponseDTO.success("Reset successful.");
+        return ApiResponseDTO.success("Password reset successfully");
     }
 
     @Override

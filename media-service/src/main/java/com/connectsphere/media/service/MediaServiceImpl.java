@@ -2,10 +2,7 @@ package com.connectsphere.media.service;
 
 import com.connectsphere.media.client.PostServiceClient;
 import com.connectsphere.media.dto.*;
-import com.connectsphere.media.entity.Media;
-import com.connectsphere.media.entity.MediaType;
-import com.connectsphere.media.entity.Story;
-import com.connectsphere.media.entity.Visibility;
+import com.connectsphere.media.entity.*;
 import com.connectsphere.media.exception.*;
 import com.connectsphere.media.repository.MediaRepository;
 import com.connectsphere.media.repository.StoryRepository;
@@ -17,33 +14,10 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.time.LocalDateTime;
-import java.util.Arrays;
-import java.util.List;
-import java.util.UUID;
+import java.util.*;
 import java.util.stream.Collectors;
 
-/**
- * MediaServiceImpl - Business Logic for ConnectSphere Media/Story-Service
- *
- * Implements all operations from MediaService interface per case study section 4.7.
- *
- * MEDIA UPLOAD FLOW:
- *   1. Validate MIME type against allowlist (JPEG, PNG, WebP, MP4)
- *   2. Validate file size against configurable limits (10MB image / 100MB video)
- *   3. Simulate CDN storage — generate URL (in production: upload to AWS S3, return CloudFront URL)
- *   4. Persist Media entity with CDN URL, MIME type, size, uploaderId
- *   5. Return MediaResponseDTO with CDN URL — caller (post-service) uses this in post creation
- *
- * STORY LIFECYCLE:
- *   CREATE:  expiresAt = LocalDateTime.now() + 24 hours
- *   VIEW:    increment viewsCount atomically (skip if viewer == author)
- *   EXPIRE:  StoryExpiryScheduler calls expireOldStories() every 5 min (NFR)
- *   DELETE:  author or admin sets isActive = false
- *
- * SOFT DELETE:
- *   Media: isDeleted = true (record retained for 30-day audit trail per NFR)
- *   Story: isActive = false
- */
+
 @Service
 @RequiredArgsConstructor
 @Slf4j
@@ -74,7 +48,7 @@ public class MediaServiceImpl implements MediaService {
     @Value("${media.storage-base-path}")
     private String storageBasePath;
 
-    // ─── MEDIA OPERATIONS ────────────────────────────────────────────────────
+    // ─── MEDIA OPERATIONS ────
 
     /**
      * Upload a media file, validate MIME type & size, simulate CDN storage,
@@ -310,8 +284,7 @@ public class MediaServiceImpl implements MediaService {
         return ApiResponseDTO.success("Media by uploader retrieved", mediaList);
     }
 
-    // ─── STORY OPERATIONS ────────────────────────────────────────────────────
-
+    // ─── STORY OPERATIONS ───
     /**
      * Create a new 24-hour ephemeral story.
      * expiresAt = now() + 24 hours.
@@ -369,32 +342,55 @@ public class MediaServiceImpl implements MediaService {
         log.info("Building story feed for user: {}", requestingUserId);
 
         java.util.Set<Integer> authorIds = new java.util.HashSet<>();
-        // 1. Include self
+        // 1. Always include self
         authorIds.add(requestingUserId);
 
-        // 2. Fetch followees
+        // 2. Fetch followees - wrapped in try/catch to be resilient
         try {
-            ApiResponseDTO<List<Integer>> response = followServiceClient.getFolloweeIds(requestingUserId);
-            if (response != null && response.isSuccess() && response.getData() != null) {
-                authorIds.addAll(response.getData());
+            if (followServiceClient != null) {
+                ApiResponseDTO<List<Integer>> response = followServiceClient.getFolloweeIds(requestingUserId);
+                if (response != null && response.isSuccess() && response.getData() != null) {
+                    authorIds.addAll(response.getData());
+                }
             }
         } catch (Exception e) {
-            log.error("Failed to fetch followees for stories: {}", e.getMessage());
+            log.error("Resilience: Follow-service call failed for stories. Proceeding with user's own stories only. Error: {}", e.getMessage());
         }
 
-        log.info("Final story authorIds list: {}", authorIds);
-
-        // 3. Fetch stories
+        // 3. Prepare followee list (excluding self)
         List<Integer> followeeIds = new java.util.ArrayList<>(authorIds);
-        followeeIds.remove(requestingUserId); // Remove self from followees list for query separation
+        followeeIds.remove(requestingUserId);
 
-        List<StoryResponseDTO> stories = storyRepository
-                .findActiveStoriesForFeed(requestingUserId, followeeIds)
+        // JPA Safeguard: Some environments throw 500 on empty IN clauses.
+        // We use a dummy ID (-1) if the user follows no one.
+        if (followeeIds.isEmpty()) {
+            followeeIds.add(-1);
+        }
+
+        try {
+            List<StoryResponseDTO> stories = storyRepository
+                    .findActiveStoriesForFeed(requestingUserId, followeeIds)
+                    .stream()
+                    .map(this::toStoryResponseDTO)
+                    .collect(Collectors.toList());
+
+            return ApiResponseDTO.success("Story feed retrieved", stories);
+        } catch (Exception e) {
+            log.error("Critical: Failed to fetch stories from repository: {}", e.getMessage());
+            // Last resort: return empty list instead of 500
+            return ApiResponseDTO.success("System fallback: Story feed temporarily limited", List.of());
+        }
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public ApiResponseDTO<List<StoryResponseDTO>> getAllActiveStories() {
+        log.info("Fetching all active stories for admin stats");
+        List<StoryResponseDTO> stories = storyRepository.findByIsActiveTrueOrderByCreatedAtDesc()
                 .stream()
                 .map(this::toStoryResponseDTO)
                 .collect(Collectors.toList());
-
-        return ApiResponseDTO.success("Story feed retrieved", stories);
+        return ApiResponseDTO.success("All active stories retrieved", stories);
     }
 
     /**
@@ -421,7 +417,7 @@ public class MediaServiceImpl implements MediaService {
                 boolean isFollowing = false;
                 try {
                     // Check if viewer follows author
-                    com.connectsphere.media.dto.ApiResponseDTO<Boolean> checkRes = followServiceClient.isFollowing(story.getAuthorId(), authHeader);
+                    ApiResponseDTO<Boolean> checkRes = followServiceClient.isFollowing(story.getAuthorId(), authHeader);
                     if (checkRes != null && checkRes.isSuccess()) {
                         isFollowing = Boolean.TRUE.equals(checkRes.getData());
                     }
@@ -439,7 +435,7 @@ public class MediaServiceImpl implements MediaService {
         if (!story.getAuthorId().equals(viewerUserId)) {
             // Unique view tracking
             if (!storyViewRepository.existsByStoryAndViewerUserId(story, viewerUserId)) {
-                com.connectsphere.media.entity.StoryView sv = com.connectsphere.media.entity.StoryView.builder()
+                StoryView sv = StoryView.builder()
                         .story(story)
                         .viewerUserId(viewerUserId)
                         .build();
@@ -482,7 +478,7 @@ public class MediaServiceImpl implements MediaService {
 
     @Override
     @Transactional(readOnly = true)
-    public ApiResponseDTO<List<java.util.Map<String, Object>>> getStoryViewers(Integer storyId, Integer requestingUserId) {
+    public ApiResponseDTO<List<Map<String, Object>>> getStoryViewers(Integer storyId, Integer requestingUserId) {
         log.info("Fetching viewers for storyId={} by user={}", storyId, requestingUserId);
 
         Story story = storyRepository.findById(storyId)
@@ -494,18 +490,18 @@ public class MediaServiceImpl implements MediaService {
         }
 
         List<Integer> viewerIds = storyViewRepository.findViewerUserIdsByStoryId(storyId);
-        List<java.util.Map<String, Object>> viewers = new java.util.ArrayList<>();
+        List<Map<String, Object>> viewers = new ArrayList<>();
 
         for (Integer vId : viewerIds) {
             try {
-                ApiResponseDTO<java.util.Map<String, Object>> userRes = authServiceClient.getUserById(vId);
+                ApiResponseDTO<Map<String, Object>> userRes = authServiceClient.getUserById(vId);
                 if (userRes != null && userRes.isSuccess() && userRes.getData() != null) {
                     viewers.add(userRes.getData());
                 }
             } catch (Exception e) {
                 log.error("Failed to fetch viewer info for userId={}: {}", vId, e.getMessage());
                 // Fallback with just ID if auth-service fails
-                viewers.add(java.util.Map.of("userId", vId, "username", "Unknown User"));
+                viewers.add(Map.of("userId", vId, "username", "Unknown User"));
             }
         }
 
@@ -542,7 +538,7 @@ public class MediaServiceImpl implements MediaService {
         return expiredCount;
     }
 
-    // ─── PRIVATE HELPERS ──────────────────────────────────────────────────────
+    // ─── PRIVATE HELPERS ───
 
     /**
      * Resolve MediaType enum from MIME type string.

@@ -13,28 +13,6 @@ import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
 
-/**
- * FollowResource - REST Controller for ConnectSphere Follow Service
- *
- * Base path: /api/v1/follows (via context-path in application.yml)
- *
- * PUBLIC (no JWT required):
- *   GET /follows/{userId}/followers         - Who follows this user
- *   GET /follows/{userId}/following         - Who this user follows
- *   GET /follows/{userId}/follower-count    - Follower count
- *   GET /follows/{userId}/following-count   - Following count
- *   GET /follows/{userId}/counts            - Both counts in one call
- *   GET /follows/{userId}/mutual            - Mutual connections
- *   GET /follows/{userId}/followee-ids      - Just followee IDs (for post-service)
- *
- * PROTECTED (JWT required):
- *   POST   /follows/{followeeId}            - Follow a user
- *   DELETE /follows/{followeeId}            - Unfollow a user
- *   GET    /follows/check/{followeeId}      - Is current user following this user?
- *   GET    /follows/suggestions             - Suggested users for current user
- *
- * followerId is always extracted from JWT — never from request body.
- */
 @RestController
 @RequestMapping("/follows")
 @Slf4j

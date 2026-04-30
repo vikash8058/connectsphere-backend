@@ -16,32 +16,6 @@ import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
 
-/**
- * MediaResource - REST Controller for ConnectSphere Media/Story-Service
- *
- * Base path: /api/v1  (via context-path in application.yml)
- *
- * MEDIA ENDPOINTS (all require authentication):
- *   POST   /media/upload                          - Upload image or video file
- *   GET    /media/{mediaId}                       - Get media item by ID
- *   GET    /media/post/{postId}                   - Get all media linked to a post
- *   GET    /media/uploader/{uploaderId}            - Get all media by a user
- *   DELETE /media/{mediaId}                       - Soft-delete media (own or admin)
- *   PATCH  /media/{mediaId}/link/{postId}         - Link media to a post
- *
- * INTERNAL MEDIA ENDPOINTS (inter-service, JWT required):
- *   DELETE /media/post/{postId}/soft-delete       - Soft-delete all media for a deleted post
- *
- * STORY ENDPOINTS (all require authentication):
- *   POST   /stories                               - Create a 24-hour story
- *   GET    /stories/feed?authorIds=1,2,3          - Get active stories from followed users
- *   GET    /stories/{storyId}/view                - View story (increments count)
- *   GET    /stories/user/{authorId}               - Get all active stories by a user
- *   DELETE /stories/{storyId}                     - Delete story (own or admin)
- *
- * userId and role are read from request attributes set by JwtAuthenticationFilter.
- * They are NEVER read from the request body to prevent spoofing.
- */
 @RestController
 @Slf4j
 @RequiredArgsConstructor
@@ -53,7 +27,7 @@ public class MediaResource {
     @org.springframework.beans.factory.annotation.Value("${media.storage-base-path}")
     private String storageBasePath;
 
-    // ─── MEDIA ENDPOINTS ─────────────────────────────────────────────────────
+    // ─── MEDIA ENDPOINTS ───
 
     /**
      * Upload an image or video file.
@@ -159,13 +133,13 @@ public class MediaResource {
         return ResponseEntity.ok(mediaService.softDeleteByPost(postId));
     }
 
-    // ─── STORY ENDPOINTS ─────────────────────────────────────────────────────
+    // ─── STORY ENDPOINTS ──
 
     /**
      * Create a new 24-hour story.
      * Requires a CDN media URL (use /media/upload first).
      */
-    @PostMapping("/stories")
+    @PostMapping("/media/stories")
     @Operation(
         summary = "Create a story",
         description = "Publish a 24-hour ephemeral story. The mediaUrl must be a CDN URL from /media/upload."
@@ -179,7 +153,7 @@ public class MediaResource {
                 .body(mediaService.createStory(request, authorId));
     }
 
-    @GetMapping("/stories/feed")
+    @GetMapping("/media/stories/feed")
     @Operation(
         summary = "Get stories feed",
         description = "Returns active stories. If authorIds are not provided, it automatically fetches stories for the authenticated user and their followees."
@@ -197,10 +171,16 @@ public class MediaResource {
         return ResponseEntity.ok(mediaService.getActiveStories(authorIds));
     }
 
+    @GetMapping("/media/stories/all")
+    @Operation(summary = "Get all active stories [ADMIN]", description = "Returns every active story on the platform. Used for admin dashboard stats.")
+    public ResponseEntity<ApiResponseDTO<List<StoryResponseDTO>>> getAllStories() {
+        return ResponseEntity.ok(mediaService.getAllActiveStories());
+    }
+
     /**
      * View a story — increments view count if viewer is not the author.
      */
-    @GetMapping("/stories/{storyId}/view")
+    @GetMapping("/media/stories/{storyId}/view")
     @Operation(
         summary = "View a story",
         description = "Returns story details and increments view count (only if viewer != author)."
@@ -217,7 +197,7 @@ public class MediaResource {
     /**
      * Get all active stories by a specific user (profile story ring display).
      */
-    @GetMapping("/stories/user/{authorId}")
+    @GetMapping("/media/stories/user/{authorId}")
     @Operation(
         summary = "Get stories by user",
         description = "Returns all currently active stories published by a specific user."
@@ -228,7 +208,7 @@ public class MediaResource {
         return ResponseEntity.ok(mediaService.getStoriesByUser(authorId));
     }
 
-    @GetMapping("/stories/{storyId}/viewers")
+    @GetMapping("/media/stories/{storyId}/viewers")
     @Operation(summary = "Get story viewer list",
                description = "Returns list of user profiles who viewed the story. Only accessible by story author.")
     public ResponseEntity<ApiResponseDTO<List<java.util.Map<String, Object>>>> getStoryViewers(
@@ -237,7 +217,7 @@ public class MediaResource {
         Integer userId = getRequestingUserId(httpRequest);
         return ResponseEntity.ok(mediaService.getStoryViewers(storyId, userId));
     }
-    @DeleteMapping("/stories/{storyId}")
+    @DeleteMapping("/media/stories/{storyId}")
     @Operation(
         summary = "Delete a story",
         description = "Sets isActive=false. Only the story author or Admin/Moderator can delete."
@@ -282,7 +262,7 @@ public class MediaResource {
         }
     }
 
-    // ─── PRIVATE HELPERS ─────────────────────────────────────────────────────
+    // ─── PRIVATE HELPERS ─────
 
     /**
      * Extract userId set by JwtAuthenticationFilter from request attribute.

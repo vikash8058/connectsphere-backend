@@ -31,7 +31,7 @@ import java.util.Optional;
 public interface PostRepository extends JpaRepository<Post, Integer> {
 
     /**
-     * Find all active posts by a specific author, newest first.
+     * Find all active posts by a specific user, newest first.
      * Used for "View User Timeline" and profile page.
      */
     List<Post> findByAuthorIdAndIsDeletedFalseOrderByCreatedAtDesc(Integer authorId);

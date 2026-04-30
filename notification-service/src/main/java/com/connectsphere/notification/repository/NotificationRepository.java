@@ -11,17 +11,7 @@ import org.springframework.stereotype.Repository;
 import java.util.List;
 import java.util.Optional;
 
-/**
- * NotificationRepository - Data access layer for Notification entity
- *
- * Methods as per ConnectSphere case study section 4.6:
- *   findByRecipientId()            - All notifications for a user (notification feed)
- *   findByRecipientIdAndIsRead()   - Filter by read/unread state
- *   countByRecipientIdAndIsRead()  - Unread badge count
- *   findByType()                   - Filter by notification type
- *   findByActorIdAndTargetId()     - Deduplicate: prevent duplicate notifications
- *   deleteByNotificationId()       - Admin/user notification removal
- */
+
 @Repository
 public interface NotificationRepository extends JpaRepository<Notification, Integer> {
 

@@ -20,20 +20,7 @@ import static org.assertj.core.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
-/**
- * FollowServiceImplTest - Unit tests for Follow Service business logic
- *
- * Uses Mockito to mock FollowRepository.
- * Tests cover:
- *  - follow (success, self-follow, already following)
- *  - unfollow (success, not following)
- *  - isFollowing (true, false)
- *  - getFollowers / getFollowing
- *  - getFollowerCount / getFollowingCount / getFollowCounts
- *  - getMutualFollows
- *  - getSuggestedUsers
- *  - getFolloweeIds
- */
+
 @ExtendWith(MockitoExtension.class)
 @DisplayName("FollowServiceImpl Unit Tests")
 class FollowServiceImplTest {
@@ -44,7 +31,7 @@ class FollowServiceImplTest {
     @InjectMocks
     private FollowServiceImpl followService;
 
-    // ── Test Data ─────────────────────────────────────────────────────────────
+    // ── Test Data ───
 
     private Follow buildFollow(Integer followId, Integer followerId, Integer followeeId) {
         return Follow.builder()
@@ -56,7 +43,7 @@ class FollowServiceImplTest {
                 .build();
     }
 
-    // ── follow() ──────────────────────────────────────────────────────────────
+    // ── follow() ────
 
     @Nested
     @DisplayName("follow()")
@@ -113,8 +100,7 @@ class FollowServiceImplTest {
         }
     }
 
-    // ── unfollow() ────────────────────────────────────────────────────────────
-
+    // ── unfollow() ──
     @Nested
     @DisplayName("unfollow()")
     class UnfollowTests {
@@ -152,7 +138,7 @@ class FollowServiceImplTest {
         }
     }
 
-    // ── isFollowing() ─────────────────────────────────────────────────────────
+    // ── isFollowing() ──
 
     @Nested
     @DisplayName("isFollowing()")
@@ -183,8 +169,7 @@ class FollowServiceImplTest {
         }
     }
 
-    // ── getFollowers() / getFollowing() ───────────────────────────────────────
-
+    // ── getFollowers() / getFollowing() ────
     @Nested
     @DisplayName("getFollowers() and getFollowing()")
     class FollowListTests {
@@ -236,7 +221,7 @@ class FollowServiceImplTest {
         }
     }
 
-    // ── getFollowCounts() ─────────────────────────────────────────────────────
+    // ── getFollowCounts() ───
 
     @Nested
     @DisplayName("getFollowCounts()")
@@ -270,8 +255,7 @@ class FollowServiceImplTest {
         }
     }
 
-    // ── getMutualFollows() ────────────────────────────────────────────────────
-
+    // ── getMutualFollows() ────
     @Nested
     @DisplayName("getMutualFollows()")
     class MutualFollowsTests {
@@ -299,7 +283,7 @@ class FollowServiceImplTest {
         }
     }
 
-    // ── getSuggestedUsers() ───────────────────────────────────────────────────
+    // ── getSuggestedUsers() ──
 
     @Nested
     @DisplayName("getSuggestedUsers()")
@@ -328,8 +312,7 @@ class FollowServiceImplTest {
         }
     }
 
-    // ── getFolloweeIds() ──────────────────────────────────────────────────────
-
+    // ── getFolloweeIds() ───
     @Nested
     @DisplayName("getFolloweeIds()")
     class FolloweeIdsTests {

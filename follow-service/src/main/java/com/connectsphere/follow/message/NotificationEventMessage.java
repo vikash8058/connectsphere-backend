@@ -3,7 +3,11 @@ package com.connectsphere.follow.message;
 import lombok.*;
 import java.io.Serializable;
 
-@Getter @Setter @NoArgsConstructor @AllArgsConstructor @Builder
+@Getter
+@Setter
+@NoArgsConstructor
+@AllArgsConstructor
+@Builder
 public class NotificationEventMessage implements Serializable {
     private Integer recipientId;
     private Integer actorId;

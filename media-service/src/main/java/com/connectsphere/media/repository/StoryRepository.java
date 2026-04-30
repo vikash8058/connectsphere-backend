@@ -121,4 +121,10 @@ public interface StoryRepository extends JpaRepository<Story, Integer> {
      * Displayed on the author's profile for story ring indicator.
      */
     int countByAuthorIdAndIsActiveTrue(Integer authorId);
+
+    /**
+     * Find all currently active stories on the platform.
+     * Used for admin dashboard statistics.
+     */
+    List<Story> findByIsActiveTrueOrderByCreatedAtDesc();
 }

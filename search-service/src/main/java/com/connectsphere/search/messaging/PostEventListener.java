@@ -7,22 +7,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.amqp.rabbit.annotation.RabbitListener;
 import org.springframework.stereotype.Component;
 
-/**
- * PostEventListener - Consumes post lifecycle events from RabbitMQ
- *
- * Listens to three queues published by post-service:
- *   POST_CREATED → indexPost()      — parse hashtags, create mappings
- *   POST_UPDATED → reIndexPost()    — diff old/new hashtags, update mappings
- *   POST_DELETED → removePostIndex() — remove all mappings, decrement counts
- *
- * This is the core integration point between post-service and search-service.
- * Keeps the hashtag index in sync without any synchronous REST coupling.
- *
- * Failure handling:
- *   If this listener throws, RabbitMQ requeues the message (default DLQ behaviour).
- *   Each handler is wrapped in try-catch to log and prevent infinite requeue loops
- *   for malformed messages.
- */
+
 @Component
 @RequiredArgsConstructor
 @Slf4j

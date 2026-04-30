@@ -6,26 +6,7 @@ import org.hibernate.annotations.CreationTimestamp;
 
 import java.time.LocalDateTime;
 
-/**
- * Follow Entity - Maps to 'follows' table in connectsphere_follow database
- *
- * Fields as per ConnectSphere case study section 4.5 (Follow-Service):
- *   followId   - Primary key, auto-increment
- *   followerId - User who is following (the actor)
- *   followeeId - User being followed (the target)
- *   status     - ACTIVE or PENDING (for private accounts)
- *   createdAt  - When the follow relationship was created
- *
- * NFR (section 6):
- * "Duplicate follow records prevented by unique constraint"
- *
- * The unique constraint on (followerId, followeeId) ensures a user
- * cannot follow the same person twice at the DB level.
- *
- * Cross-service references:
- *   followerId → users.user_id in auth-service (no DB FK)
- *   followeeId → users.user_id in auth-service (no DB FK)
- */
+
 @Entity
 @Table(
     name = "follows",

@@ -1,6 +1,6 @@
 package com.connectsphere.post.config;
 
-import com.connectsphere.post.security.JwtAuthenticationFilter;
+import com.connectsphere.post.security.GatewayHeaderFilter;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -15,29 +15,7 @@ import org.springframework.security.web.authentication.UsernamePasswordAuthentic
 
 /**
  * SecurityConfig - Spring Security Configuration for Post Service
- *
- * Public endpoints (no JWT required):
- *   GET /posts/public          - Browse public posts (guests)
- *   GET /posts/{postId}        - View post detail (guests see PUBLIC only)
- *   GET /posts/user/{authorId} - View user's public timeline
- *   GET /posts/search          - Keyword search (PUBLIC posts only)
- *   GET /posts/count/{authorId}- Post count for profile badge
- *   /actuator/health           - Health check
- *   /swagger-ui/**, /api-docs/** - API docs
- *
- * Protected endpoints (valid JWT required):
- *   POST   /posts              - Create post
- *   PUT    /posts/{id}         - Update post
- *   DELETE /posts/{id}         - Delete post
- *   PATCH  /posts/{id}/visibility
- *   GET    /posts/feed         - Personalised news feed
- *
- * Internal service endpoints (JWT required, inter-service calls):
- *   POST /posts/{id}/likes/increment
- *   POST /posts/{id}/likes/decrement
- *   POST /posts/{id}/comments/increment
- *   POST /posts/{id}/comments/decrement
- *   POST /posts/{id}/shares/increment
+ * Centralized security now handled by API Gateway.
  */
 @Configuration
 @EnableWebSecurity
@@ -45,7 +23,7 @@ import org.springframework.security.web.authentication.UsernamePasswordAuthentic
 @RequiredArgsConstructor
 public class SecurityConfig {
 
-    private final JwtAuthenticationFilter jwtAuthenticationFilter;
+    private final GatewayHeaderFilter gatewayHeaderFilter;
 
     private static final String[] PUBLIC_GET_ENDPOINTS = {
             "/posts/public",
@@ -62,19 +40,16 @@ public class SecurityConfig {
         http
             .csrf(AbstractHttpConfigurer::disable)
             .authorizeHttpRequests(auth -> auth
-                    // Guest-accessible GET endpoints
                     .requestMatchers(HttpMethod.GET, PUBLIC_GET_ENDPOINTS).permitAll()
-                    // View single post, user timeline, and count are public GET
                     .requestMatchers(HttpMethod.GET, "/posts/{postId}").permitAll()
                     .requestMatchers(HttpMethod.GET, "/posts/user/{authorId}").permitAll()
                     .requestMatchers(HttpMethod.GET, "/posts/count/{authorId}").permitAll()
-                    // Everything else requires authentication
                     .anyRequest().authenticated()
             )
             .sessionManagement(session ->
                     session.sessionCreationPolicy(SessionCreationPolicy.STATELESS)
             )
-            .addFilterBefore(jwtAuthenticationFilter,
+            .addFilterBefore(gatewayHeaderFilter,
                     UsernamePasswordAuthenticationFilter.class);
 
         return http.build();

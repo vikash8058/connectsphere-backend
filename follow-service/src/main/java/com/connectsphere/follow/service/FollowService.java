@@ -4,24 +4,7 @@ import com.connectsphere.follow.dto.*;
 
 import java.util.List;
 
-/**
- * FollowService - Business Contract (Interface)
- *
- * Declares all operations as per ConnectSphere case study section 4.5:
- *   follow()             - Create a follow relationship
- *   unfollow()           - Delete a follow relationship
- *   isFollowing()        - Boolean check for follow status
- *   getFollowers()       - Users following a given user
- *   getFollowing()       - Users a given user follows
- *   getFollowerCount()   - Count of followers
- *   getFollowingCount()  - Count of following
- *   getFollowCounts()    - Both counts in one call (for profile badge)
- *   getMutualFollows()   - Mutual connections (both follow each other)
- *   getSuggestedUsers()  - Recommended users based on second-degree connections
- *   getFolloweeIds()     - Just the followee IDs (used by post-service for feed)
- *
- * Same interface/implementation separation as all other services.
- */
+
 public interface FollowService {
 
     /**

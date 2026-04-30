@@ -6,16 +6,7 @@ import lombok.*;
 
 import java.util.List;
 
-/**
- * BulkNotificationRequestDTO - Inbound payload for admin broadcast notifications
- *
- * Used by AdminController and notification-service bulk dispatch.
- * From case study section 4.6:
- *   "Bulk notification dispatch is available for admin broadcast and system-generated alerts."
- *
- * If recipientIds is null or empty → sends to ALL users (platform-wide broadcast).
- * If recipientIds is provided      → sends to targeted users only.
- */
+
 @Getter
 @Setter
 @NoArgsConstructor

@@ -23,21 +23,6 @@ import org.springframework.web.context.request.ServletRequestAttributes;
 import java.util.List;
 import java.util.stream.Collectors;
 
-/**
- * FollowServiceImpl - Business Logic Implementation
- *
- * Key flows:
- * 1. follow()            -> Self-follow check -> Duplicate check -> Save Follow (ACTIVE)
- * 2. unfollow()          -> Find existing follow -> Delete
- * 3. isFollowing()       -> existsByFollowerIdAndFolloweeIdAndStatus(ACTIVE)
- * 4. getFollowers()      -> findByFolloweeIdAndStatus(ACTIVE) -> map to DTOs
- * 5. getFollowing()      -> findByFollowerIdAndStatus(ACTIVE) -> map to DTOs
- * 6. getMutualFollows()  -> DB query finds both-way follows
- * 7. getSuggestedUsers() -> DB query finds second-degree connections
- * 8. getFolloweeIds()    -> Lightweight query returns only IDs (for post-service feed)
- *
- * followerId is NEVER taken from request body — always from JWT token.
- */
 @Service
 @Slf4j
 @RequiredArgsConstructor
@@ -45,7 +30,6 @@ public class FollowServiceImpl implements FollowService {
 
     private final FollowRepository followRepository;
     private final AuthServiceClient authServiceClient;
-    // ADD at top of class
     private final RabbitTemplate rabbitTemplate;
 
     @Value("${notification.rabbitmq.exchange}")

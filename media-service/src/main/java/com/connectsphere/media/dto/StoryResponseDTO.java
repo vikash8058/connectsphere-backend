@@ -7,17 +7,7 @@ import lombok.*;
 
 import java.time.LocalDateTime;
 
-/**
- * StoryResponseDTO - Safe story data returned in API responses
- *
- * Returned after:
- *   - Story creation (POST /stories)
- *   - Fetching stories feed (GET /stories/feed)
- *   - Fetching stories by user (GET /stories/user/{authorId})
- *
- * Case study 4.7: "Story entity: storyId, authorId, mediaUrl, caption,
- * mediaType, viewsCount, expiresAt (createdAt + 24h), createdAt, isActive"
- */
+
 @Getter
 @Setter
 @NoArgsConstructor

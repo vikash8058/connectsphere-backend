@@ -21,27 +21,7 @@ import static org.assertj.core.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
-/**
- * SearchServiceImplTest - Unit tests for Search/Hashtag Service business logic
- *
- * Uses Mockito to mock:
- *   - HashtagRepository      → no DB needed
- *   - PostHashtagRepository  → no DB needed
- *   - PostServiceClient      → no actual Feign HTTP call
- *   - AuthServiceClient      → no actual Feign HTTP call
- *
- * Tests cover:
- *   indexPost         (new tags, existing tags, non-PUBLIC skipped, empty content)
- *   reIndexPost       (added tags, removed tags, visibility changed to private)
- *   removePostIndex   (with mappings, no mappings)
- *   searchPosts       (keyword, hashtag prefix, empty keyword)
- *   searchUsers       (results, empty response, feign failure)
- *   getHashtagsForPost
- *   getTrendingHashtags
- *   getPostsByHashtag  (exists, not found)
- *   searchHashtags
- *   getHashtagCount    (exists, not found)
- */
+
 @ExtendWith(MockitoExtension.class)
 @DisplayName("SearchServiceImpl Unit Tests")
 class SearchServiceImplTest {
@@ -54,8 +34,7 @@ class SearchServiceImplTest {
     @InjectMocks
     private SearchServiceImpl searchService;
 
-    // ── Test Data Builders ────────────────────────────────────────────────────
-
+    // ── Test Data Builders ───
     private Hashtag buildHashtag(Integer id, String tag, int postCount) {
         return Hashtag.builder()
                 .hashtagId(id)
@@ -90,7 +69,7 @@ class SearchServiceImplTest {
                 .build();
     }
 
-    // ── indexPost() ───────────────────────────────────────────────────────────
+    // ── indexPost() ─────
 
     @Nested
     @DisplayName("indexPost()")
@@ -180,7 +159,7 @@ class SearchServiceImplTest {
         }
     }
 
-    // ── reIndexPost() ─────────────────────────────────────────────────────────
+    // ── reIndexPost() ──
 
     @Nested
     @DisplayName("reIndexPost()")
@@ -233,7 +212,7 @@ class SearchServiceImplTest {
         }
     }
 
-    // ── removePostIndex() ─────────────────────────────────────────────────────
+    // ── removePostIndex() ──
 
     @Nested
     @DisplayName("removePostIndex()")
@@ -272,7 +251,7 @@ class SearchServiceImplTest {
         }
     }
 
-    // ── searchPosts() ─────────────────────────────────────────────────────────
+    // ── searchPosts() ───
 
     @Nested
     @DisplayName("searchPosts()")
@@ -314,7 +293,7 @@ class SearchServiceImplTest {
         }
     }
 
-    // ── searchUsers() ─────────────────────────────────────────────────────────
+    // ── searchUsers() ────
 
     @Nested
     @DisplayName("searchUsers()")
@@ -358,7 +337,7 @@ class SearchServiceImplTest {
         }
     }
 
-    // ── getTrendingHashtags() ─────────────────────────────────────────────────
+    // ── getTrendingHashtags() ────
 
     @Nested
     @DisplayName("getTrendingHashtags()")
@@ -399,7 +378,7 @@ class SearchServiceImplTest {
         }
     }
 
-    // ── getPostsByHashtag() ───────────────────────────────────────────────────
+    // ── getPostsByHashtag() ───
 
     @Nested
     @DisplayName("getPostsByHashtag()")
@@ -440,7 +419,7 @@ class SearchServiceImplTest {
         }
     }
 
-    // ── getHashtagCount() ─────────────────────────────────────────────────────
+    // ── getHashtagCount() ───
 
     @Nested
     @DisplayName("getHashtagCount()")

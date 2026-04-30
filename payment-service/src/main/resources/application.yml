@@ -3,9 +3,9 @@ spring:
     name: payment-service
 
   datasource:
-    url: jdbc:mysql://localhost:3306/connectsphere_payment?createDatabaseIfNotExist=true&useSSL=false&serverTimezone=Asia/Kolkata
-    username: root
-    password: savi2026
+    url: jdbc:mysql://mysql:3306/connectsphere_payment?createDatabaseIfNotExist=true&useSSL=false&serverTimezone=Asia/Kolkata
+    username: ${DB_USERNAME}
+    password: ${DB_PASSWORD}
     driver-class-name: com.mysql.cj.jdbc.Driver
 
   jpa:
@@ -17,10 +17,10 @@ spring:
         format_sql: true
 
   rabbitmq:
-    host: localhost
-    port: 5672
-    username: guest
-    password: guest
+    host: ${RABBITMQ_HOST:rabbitmq}
+    port: ${RABBITMQ_PORT:5672}
+    username: ${RABBITMQ_USERNAME:guest}
+    password: ${RABBITMQ_PASSWORD:guest}
 
 server:
   port: 8095
@@ -30,14 +30,13 @@ server:
 eureka:
   client:
     service-url:
-      defaultZone: http://localhost:8761/eureka/
+      defaultZone: http://eureka-server:8761/eureka/
 
-jwt:
-  secret: dGhpcytpcy1hLXZlcnkrc2VjdXJlK2tleStmb3Irand0
+
 
 razorpay:
-  key-id: rzp_test_SbDER8b9DNfLu4
-  key-secret: 8Qh9ULRP3U5gByU2QMSsxQTg
+  key-id: ${RAZORPAY_KEY_ID}
+  key-secret: ${RAZORPAY_KEY_SECRET}
 
 connectsphere:
   notification:

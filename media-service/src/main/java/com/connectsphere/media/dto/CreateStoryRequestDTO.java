@@ -6,18 +6,7 @@ import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 import lombok.*;
 
-/**
- * CreateStoryRequestDTO - Payload for POST /stories
- *
- * Case study 2.3: "Upload images or short videos as Stories visible for 24 hours"
- * Case study 4.7: "Story: storyId, authorId, mediaUrl, caption, mediaType, viewsCount, expiresAt"
- *
- * mediaUrl   -> CDN URL from /media/upload (required)
- * caption    -> Optional text caption (max 500 chars)
- * mediaType  -> IMAGE or VIDEO (required)
- *
- * authorId is NOT in this DTO — it is extracted from the JWT by MediaResource.
- */
+
 @Getter
 @Setter
 @NoArgsConstructor

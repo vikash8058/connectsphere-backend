@@ -11,18 +11,7 @@ import org.springframework.stereotype.Repository;
 import java.util.List;
 import java.util.Optional;
 
-/**
- * MediaRepository - Data Access Layer for Media Entity
- *
- * Custom queries as per ConnectSphere case study section 4.7:
- *   findByUploaderId()     - All media uploaded by a specific user
- *   findByMediaId()        - Single media item by ID
- *   findByLinkedPostId()   - All media attached to a specific post
- *   findByMediaType()      - Filter by IMAGE or VIDEO
- *   deleteByMediaId()      - Soft delete media (isDeleted = true)
- *   softDeleteByPostId()   - Soft delete all media linked to a deleted post
- *   linkMediaToPost()      - Associate media with a post after creation
- */
+
 @Repository
 public interface MediaRepository extends JpaRepository<Media, Integer> {
 

@@ -6,25 +6,6 @@ import org.hibernate.annotations.CreationTimestamp;
 
 import java.time.LocalDateTime;
 
-/**
- * Like Entity - Maps to 'likes' table in connectsphere_like database
- *
- * Fields as per ConnectSphere case study section 4.4 (Like-Service):
- *   likeId       - Primary key, auto-increment
- *   userId       - Who reacted (references auth-service user, cross-service)
- *   targetId     - ID of the post OR comment being reacted to
- *   targetType   - POST or COMMENT (polymorphic — same table handles both)
- *   reactionType - LIKE / LOVE / HAHA / WOW / SAD / ANGRY
- *   createdAt    - When the reaction was created
- *
- * NFR (section 6):
- * "One-reaction-per-user enforced atomically;
- *  duplicate follow records prevented by unique constraint"
- *
- * The unique constraint on (userId, targetId, targetType) ensures
- * one reaction per user per target at the database level.
- * A user must first REMOVE their existing reaction to change it (changeReaction()).
- */
 @Entity
 @Table(
     name = "likes",

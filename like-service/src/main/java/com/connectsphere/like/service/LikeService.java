@@ -5,23 +5,7 @@ import com.connectsphere.like.entity.TargetType;
 
 import java.util.List;
 
-/**
- * LikeService - Business Contract (Interface)
- *
- * Declares all operations as per ConnectSphere case study section 4.4:
- *   likeTarget()         - Add a reaction (one per user per target)
- *   unlikeTarget()       - Remove a reaction
- *   hasLiked()           - Check if user has reacted to a target
- *   getLikesByTarget()   - All reactions on a post/comment
- *   getLikesByUser()     - All reactions by a user
- *   getLikeCount()       - Total reaction count on a target
- *   getLikeCountByType() - Count of a specific reaction type
- *   getReactionSummary() - Full emoji bar map (all 6 types)
- *   changeReaction()     - Change existing reaction to a different type
- *
- * Separation of interface + implementation follows same pattern
- * as PostService/PostServiceImpl in post-service.
- */
+
 public interface LikeService {
 
     /**

@@ -22,29 +22,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 
-/**
- * LikeServiceImpl - Business Logic Implementation
- *
- * Inter-service calls now use Feign clients instead of RestTemplate:
- *   PostServiceClient    → increment/decrement post likesCount
- *   CommentServiceClient → increment/decrement comment likesCount
- *
- * Key flows:
- * 1. likeTarget()     -> Duplicate check -> Save Like
- *                     -> PostServiceClient.incrementLikeCount()    (if POST)
- *                     -> CommentServiceClient.incrementLikeCount() (if COMMENT)
- *
- * 2. unlikeTarget()   -> Find existing reaction -> Delete
- *                     -> PostServiceClient.decrementLikeCount()    (if POST)
- *                     -> CommentServiceClient.decrementLikeCount() (if COMMENT)
- *
- * 3. changeReaction() -> Delete old -> Insert new (atomic @Transactional)
- *                     -> No counter change (still 1 reaction total)
- *
- * 4. getReactionSummary() -> Build map of all 6 reaction types + counts
- *
- * userId is NEVER taken from request body — always from JWT token.
- */
 @Service
 @Slf4j
 @RequiredArgsConstructor
@@ -307,7 +284,7 @@ public class LikeServiceImpl implements LikeService {
 
     /**
      * Publish LIKE notification event to RabbitMQ.
-     * notification-service consumes this and saves + emails the recipient.
+     * notification-service consumes this and saves
      * Fire-and-forget — like is already saved, this is best-effort.
      */
     private void publishLikeNotification(Integer actorId, Integer targetId, TargetType targetType) {

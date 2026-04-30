@@ -23,6 +23,7 @@ import java.nio.charset.StandardCharsets;
  * Validates the Bearer token from the Authorization header.
  * On success, forwards userId and role as headers to downstream services.
  * On failure, returns 401 Unauthorized immediately.
+ *
  */
 @Component
 @Slf4j
@@ -68,14 +69,16 @@ public class JwtAuthenticationFilter extends AbstractGatewayFilterFactory<JwtAut
 
                 String userId = claims.get("userId", Integer.class).toString();
                 String role   = claims.get("role", String.class);
+                String email  = claims.getSubject();
 
-                log.debug("JWT valid — userId: {}, role: {}", userId, role);
+                log.debug("JWT valid — userId: {}, role: {}, email: {}", userId, role, email);
 
                 // Forward user info as custom headers to downstream services
                 ServerWebExchange mutatedExchange = exchange.mutate()
                         .request(r -> r
                             .header("X-User-Id", userId)     // Downstream can read who made the request
                             .header("X-User-Role", role)     // Downstream can enforce role-based access
+                            .header("X-User-Email", email)   // Downstream uses email for principal
                         )
                         .build();
 

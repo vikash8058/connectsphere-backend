@@ -25,7 +25,7 @@ public class Post {
     private Integer postId;
 
     @Column(name = "author_id", nullable = false)
-    private Integer authorId;
+    private Integer authorId; //userId
 
     @Column(name = "content", columnDefinition = "TEXT")
     private String content;

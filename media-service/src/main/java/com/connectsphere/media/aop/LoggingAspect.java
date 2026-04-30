@@ -8,16 +8,7 @@ import org.springframework.stereotype.Component;
 
 import java.util.Arrays;
 
-/**
- * LoggingAspect - AOP-based logging for ConnectSphere Media Service
- *
- * Mirrors the exact same structure as post-service and auth-service LoggingAspect.
- * Automatically logs method entry, exit, exceptions, and execution time
- * across controller, service, scheduler, and repository layers.
- *
- * Performance threshold: 1500ms (as per ConnectSphere NFR — 1.5 seconds for feed operations)
- * Story expiry scheduler execution is also timed for monitoring.
- */
+
 @Aspect
 @Component
 @Slf4j

@@ -29,10 +29,11 @@ target/
 # IDE - VS Code
 # ===========================
 .vscode/
-
 # ===========================
 # OS Files
 # ===========================
+media-service/uploads/
+# OS
 .DS_Store
 Thumbs.db
 desktop.ini
