@@ -132,7 +132,7 @@ public class OAuth2SuccessHandler implements AuthenticationSuccessHandler {
         // ── 6. Redirect to frontend callback ─────
         // We pass token, userId, username, email, role as query params.
         // The frontend OAuthCallback component will parse these and save the session.
-        String targetUrl = String.format("%s/oauth/callback?token=%s&userId=%d&username=%s&email=%s&role=%s&isPasswordSet=%b&profilePicUrl=%s&fullName=%s",
+        String targetUrl = String.format("%s/oauth/callback?token=%s&userId=%d&username=%s&email=%s&role=%s&isPasswordSet=%b&profilePicUrl=%s&fullName=%s&isElite=%b",
                 frontendUrl,
                 accessToken,
                 user.getUserId(),
@@ -141,7 +141,8 @@ public class OAuth2SuccessHandler implements AuthenticationSuccessHandler {
                 user.getRole().name(),
                 user.getPasswordHash() != null,
                 user.getProfilePicUrl() != null ? user.getProfilePicUrl() : "",
-                user.getFullName() != null ? user.getFullName() : ""
+                user.getFullName() != null ? user.getFullName() : "",
+                user.getIsElite() != null ? user.getIsElite() : false
         );
 
         response.sendRedirect(targetUrl);

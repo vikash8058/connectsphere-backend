@@ -139,7 +139,7 @@ public class MediaResource {
      * Create a new 24-hour story.
      * Requires a CDN media URL (use /media/upload first).
      */
-    @PostMapping("/stories")
+    @PostMapping("/media/stories")
     @Operation(
         summary = "Create a story",
         description = "Publish a 24-hour ephemeral story. The mediaUrl must be a CDN URL from /media/upload."
@@ -153,7 +153,7 @@ public class MediaResource {
                 .body(mediaService.createStory(request, authorId));
     }
 
-    @GetMapping("/stories/feed")
+    @GetMapping("/media/stories/feed")
     @Operation(
         summary = "Get stories feed",
         description = "Returns active stories. If authorIds are not provided, it automatically fetches stories for the authenticated user and their followees."
@@ -171,10 +171,16 @@ public class MediaResource {
         return ResponseEntity.ok(mediaService.getActiveStories(authorIds));
     }
 
+    @GetMapping("/media/stories/all")
+    @Operation(summary = "Get all active stories [ADMIN]", description = "Returns every active story on the platform. Used for admin dashboard stats.")
+    public ResponseEntity<ApiResponseDTO<List<StoryResponseDTO>>> getAllStories() {
+        return ResponseEntity.ok(mediaService.getAllActiveStories());
+    }
+
     /**
      * View a story — increments view count if viewer is not the author.
      */
-    @GetMapping("/stories/{storyId}/view")
+    @GetMapping("/media/stories/{storyId}/view")
     @Operation(
         summary = "View a story",
         description = "Returns story details and increments view count (only if viewer != author)."
@@ -191,7 +197,7 @@ public class MediaResource {
     /**
      * Get all active stories by a specific user (profile story ring display).
      */
-    @GetMapping("/stories/user/{authorId}")
+    @GetMapping("/media/stories/user/{authorId}")
     @Operation(
         summary = "Get stories by user",
         description = "Returns all currently active stories published by a specific user."
@@ -202,7 +208,7 @@ public class MediaResource {
         return ResponseEntity.ok(mediaService.getStoriesByUser(authorId));
     }
 
-    @GetMapping("/stories/{storyId}/viewers")
+    @GetMapping("/media/stories/{storyId}/viewers")
     @Operation(summary = "Get story viewer list",
                description = "Returns list of user profiles who viewed the story. Only accessible by story author.")
     public ResponseEntity<ApiResponseDTO<List<java.util.Map<String, Object>>>> getStoryViewers(
@@ -211,7 +217,7 @@ public class MediaResource {
         Integer userId = getRequestingUserId(httpRequest);
         return ResponseEntity.ok(mediaService.getStoryViewers(storyId, userId));
     }
-    @DeleteMapping("/stories/{storyId}")
+    @DeleteMapping("/media/stories/{storyId}")
     @Operation(
         summary = "Delete a story",
         description = "Sets isActive=false. Only the story author or Admin/Moderator can delete."

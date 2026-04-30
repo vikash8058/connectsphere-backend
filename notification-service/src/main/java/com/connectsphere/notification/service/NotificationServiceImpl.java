@@ -379,10 +379,12 @@ public class NotificationServiceImpl implements NotificationService {
     // ── PRIVATE HELPER: Determine if an email alert should be sent for this notification type ──
     private boolean isHighPriorityEmailEvent(NotificationType type, Integer recipientId) {
         return switch (type) {
-            case LIKE, COMMENT, REPLY, MENTION -> false; // in-app only — never email
-            case SYSTEM, FOLLOW, PAYMENT_SUCCESS, SUBSCRIPTION_EXPIRY -> true;  // always email for these types
+            case LIKE, COMMENT, REPLY, MENTION -> false;
+            case FOLLOW -> isFollowerMilestone(recipientId); // Only email on milestones
+            case SYSTEM, PAYMENT_SUCCESS, SUBSCRIPTION_EXPIRY -> true; 
         };
     }
+
     // ── PRIVATE HELPER: Check if a FOLLOW notification is a milestone (100, 500, 1000 followers) ──
     private boolean isFollowerMilestone(Integer recipientId) {
         if (recipientId == null) return false;

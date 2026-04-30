@@ -25,6 +25,7 @@ public class LoginResponseDTO {
     private AuthProvider provider;
     @com.fasterxml.jackson.annotation.JsonProperty("isPasswordSet")
     private boolean isPasswordSet;
+    @com.fasterxml.jackson.annotation.JsonProperty("isElite")
     private Boolean isElite;
     private LocalDateTime eliteUntil;
 }

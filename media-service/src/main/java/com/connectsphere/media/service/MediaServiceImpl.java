@@ -342,32 +342,55 @@ public class MediaServiceImpl implements MediaService {
         log.info("Building story feed for user: {}", requestingUserId);
 
         java.util.Set<Integer> authorIds = new java.util.HashSet<>();
-        // 1. Include self
+        // 1. Always include self
         authorIds.add(requestingUserId);
 
-        // 2. Fetch followees
+        // 2. Fetch followees - wrapped in try/catch to be resilient
         try {
-            ApiResponseDTO<List<Integer>> response = followServiceClient.getFolloweeIds(requestingUserId);
-            if (response != null && response.isSuccess() && response.getData() != null) {
-                authorIds.addAll(response.getData());
+            if (followServiceClient != null) {
+                ApiResponseDTO<List<Integer>> response = followServiceClient.getFolloweeIds(requestingUserId);
+                if (response != null && response.isSuccess() && response.getData() != null) {
+                    authorIds.addAll(response.getData());
+                }
             }
         } catch (Exception e) {
-            log.error("Failed to fetch followees for stories: {}", e.getMessage());
+            log.error("Resilience: Follow-service call failed for stories. Proceeding with user's own stories only. Error: {}", e.getMessage());
         }
 
-        log.info("Final story authorIds list: {}", authorIds);
-
-        // 3. Fetch stories
+        // 3. Prepare followee list (excluding self)
         List<Integer> followeeIds = new java.util.ArrayList<>(authorIds);
-        followeeIds.remove(requestingUserId); // Remove self from followees list for query separation
+        followeeIds.remove(requestingUserId);
 
-        List<StoryResponseDTO> stories = storyRepository
-                .findActiveStoriesForFeed(requestingUserId, followeeIds)
+        // JPA Safeguard: Some environments throw 500 on empty IN clauses.
+        // We use a dummy ID (-1) if the user follows no one.
+        if (followeeIds.isEmpty()) {
+            followeeIds.add(-1);
+        }
+
+        try {
+            List<StoryResponseDTO> stories = storyRepository
+                    .findActiveStoriesForFeed(requestingUserId, followeeIds)
+                    .stream()
+                    .map(this::toStoryResponseDTO)
+                    .collect(Collectors.toList());
+
+            return ApiResponseDTO.success("Story feed retrieved", stories);
+        } catch (Exception e) {
+            log.error("Critical: Failed to fetch stories from repository: {}", e.getMessage());
+            // Last resort: return empty list instead of 500
+            return ApiResponseDTO.success("System fallback: Story feed temporarily limited", List.of());
+        }
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public ApiResponseDTO<List<StoryResponseDTO>> getAllActiveStories() {
+        log.info("Fetching all active stories for admin stats");
+        List<StoryResponseDTO> stories = storyRepository.findByIsActiveTrueOrderByCreatedAtDesc()
                 .stream()
                 .map(this::toStoryResponseDTO)
                 .collect(Collectors.toList());
-
-        return ApiResponseDTO.success("Story feed retrieved", stories);
+        return ApiResponseDTO.success("All active stories retrieved", stories);
     }
 
     /**

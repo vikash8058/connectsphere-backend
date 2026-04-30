@@ -108,6 +108,14 @@ public interface MediaService {
     ApiResponseDTO<List<StoryResponseDTO>> getActiveStoriesForUser(Integer requestingUserId, String authHeader);
 
     /**
+     * Get all active stories on the platform (global feed).
+     * Used for admin statistics and trending views.
+     *
+     * @return List of all active StoryResponseDTO
+     */
+    ApiResponseDTO<List<StoryResponseDTO>> getAllActiveStories();
+
+    /**
      * Increment view count for a story (another user opened it).
      * Only increments if the viewer is NOT the author.
      * Enforces visibility rules: PUBLIC, FOLLOWERS_ONLY, or PRIVATE.
