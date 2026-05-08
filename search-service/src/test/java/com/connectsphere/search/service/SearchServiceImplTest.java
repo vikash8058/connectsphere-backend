@@ -190,13 +190,12 @@ class SearchServiceImplTest {
             String oldContent = "Hello #spring";
             String newContent = "Hello #boot";   // removed: spring, added: boot
 
-            // Old tag exists
+            // Old tag — loaded from existing PostHashtag mappings (no findByTag needed for removal)
             Hashtag springTag = buildHashtag(1, "spring", 3);
-            when(hashtagRepository.findByTag("spring")).thenReturn(Optional.of(springTag));
             when(postHashtagRepository.findByPostId(postId)).thenReturn(
                     List.of(buildPostHashtag(postId, springTag)));
 
-            // New tag is fresh
+            // New tag is fresh — upsertHashtag calls findByTag("boot")
             when(hashtagRepository.findByTag("boot")).thenReturn(Optional.empty());
             Hashtag bootTag = buildHashtag(2, "boot", 1);
             when(hashtagRepository.save(any(Hashtag.class))).thenReturn(bootTag);
@@ -206,9 +205,10 @@ class SearchServiceImplTest {
             searchService.reIndexPost(postId, 5, newContent, oldContent, "PUBLIC");
 
             // Then
-            verify(hashtagRepository).decrementPostCount(1);   // spring removed
-            verify(hashtagRepository).save(any(Hashtag.class)); // boot inserted
-            verify(postHashtagRepository).save(any(PostHashtag.class)); // new mapping
+            verify(postHashtagRepository).deleteByPostIdAndHashtagId(postId, 1); // spring mapping removed
+            verify(hashtagRepository).decrementPostCount(1);                      // spring count decremented
+            verify(hashtagRepository).save(any(Hashtag.class));                   // boot inserted
+            verify(postHashtagRepository).save(any(PostHashtag.class));           // new boot mapping
         }
     }
 

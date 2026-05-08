@@ -8,21 +8,6 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
-/**
- * RabbitMQConfig - RabbitMQ configuration for Search Service
- *
- * search-service CONSUMES from three queues:
- *   connectsphere.search.post.created.queue  ← post-service publishes POST_CREATED
- *   connectsphere.search.post.updated.queue  ← post-service publishes POST_UPDATED
- *   connectsphere.search.post.deleted.queue  ← post-service publishes POST_DELETED
- *
- * All three queues bind to the same exchange (connectsphere.post.exchange)
- * with different routing keys.
- *
- * NOTE: post-service must also declare the same exchange and publish to it.
- * Exchanges and queues are idempotently declared on startup — safe to declare
- * from both sides.
- */
 @Configuration
 public class RabbitMQConfig {
 

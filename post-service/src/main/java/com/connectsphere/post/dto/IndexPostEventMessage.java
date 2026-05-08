@@ -21,6 +21,7 @@ import lombok.*;
 @AllArgsConstructor
 @Builder
 @ToString
+@EqualsAndHashCode
 public class IndexPostEventMessage {
 
     /** Event type: POST_CREATED / POST_UPDATED / POST_DELETED */

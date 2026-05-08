@@ -1,16 +1,20 @@
 package com.connectsphere.follow.service;
 
+import com.connectsphere.follow.client.AuthServiceClient;
 import com.connectsphere.follow.dto.*;
 import com.connectsphere.follow.entity.Follow;
 import com.connectsphere.follow.entity.FollowStatus;
 import com.connectsphere.follow.exception.AlreadyFollowingException;
 import com.connectsphere.follow.exception.FollowNotFoundException;
 import com.connectsphere.follow.exception.SelfFollowException;
+import com.connectsphere.follow.exception.UserNotFoundException;
 import com.connectsphere.follow.repository.FollowRepository;
 import org.junit.jupiter.api.*;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.*;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.amqp.rabbit.core.RabbitTemplate;
+import org.springframework.test.util.ReflectionTestUtils;
 
 import java.time.LocalDateTime;
 import java.util.List;
@@ -28,8 +32,20 @@ class FollowServiceImplTest {
     @Mock
     private FollowRepository followRepository;
 
+    @Mock
+    private AuthServiceClient authServiceClient;
+
+    @Mock
+    private RabbitTemplate rabbitTemplate;
+
     @InjectMocks
     private FollowServiceImpl followService;
+
+    @BeforeEach
+    void setUp() {
+        ReflectionTestUtils.setField(followService, "notificationExchange", "notification.exchange");
+        ReflectionTestUtils.setField(followService, "notificationRoutingKey", "notification.key");
+    }
 
     // ── Test Data ───
 
@@ -43,6 +59,14 @@ class FollowServiceImplTest {
                 .build();
     }
 
+    private UserExistsResponseDTO buildValidUserResponse() {
+        UserDataDTO userData = new UserDataDTO();
+        UserExistsResponseDTO response = new UserExistsResponseDTO();
+        response.setSuccess(true);
+        response.setData(userData);
+        return response;
+    }
+
     // ── follow() ────
 
     @Nested
@@ -52,20 +76,19 @@ class FollowServiceImplTest {
         @Test
         @DisplayName("Should create follow relationship successfully")
         void follow_success() {
-            // Given
             Integer followerId = 1;
             Integer followeeId = 2;
             Follow saved = buildFollow(10, followerId, followeeId);
 
+            when(authServiceClient.getUserById(eq(followeeId), any()))
+                    .thenReturn(buildValidUserResponse());
             when(followRepository.existsByFollowerIdAndFolloweeId(followerId, followeeId))
                     .thenReturn(false);
             when(followRepository.save(any(Follow.class))).thenReturn(saved);
 
-            // When
             ApiResponseDTO<FollowResponseDTO> response =
                     followService.follow(followerId, followeeId);
 
-            // Then
             assertThat(response.isSuccess()).isTrue();
             assertThat(response.getMessage()).isEqualTo("Followed successfully");
             assertThat(response.getData().getFollowerId()).isEqualTo(followerId);
@@ -77,7 +100,6 @@ class FollowServiceImplTest {
         @Test
         @DisplayName("Should throw SelfFollowException when user tries to follow themselves")
         void follow_selfFollow_throwsException() {
-            // When / Then
             assertThatThrownBy(() -> followService.follow(1, 1))
                     .isInstanceOf(SelfFollowException.class)
                     .hasMessageContaining("cannot follow yourself");
@@ -88,15 +110,54 @@ class FollowServiceImplTest {
         @Test
         @DisplayName("Should throw AlreadyFollowingException on duplicate follow")
         void follow_alreadyFollowing_throwsException() {
-            // Given
+            when(authServiceClient.getUserById(eq(2), any()))
+                    .thenReturn(buildValidUserResponse());
             when(followRepository.existsByFollowerIdAndFolloweeId(1, 2)).thenReturn(true);
 
-            // When / Then
             assertThatThrownBy(() -> followService.follow(1, 2))
                     .isInstanceOf(AlreadyFollowingException.class)
                     .hasMessageContaining("already following");
 
             verify(followRepository, never()).save(any());
+        }
+
+        @Test
+        @DisplayName("Should throw UserNotFoundException when user response is null")
+        void follow_userResponseNull_throwsUserNotFoundException() {
+            when(authServiceClient.getUserById(eq(2), any())).thenReturn(null);
+
+            assertThatThrownBy(() -> followService.follow(1, 2))
+                    .isInstanceOf(UserNotFoundException.class)
+                    .hasMessageContaining("User not found");
+        }
+
+        @Test
+        @DisplayName("Should throw UserNotFoundException when auth service throws exception")
+        void follow_authServiceThrows_throwsUserNotFoundException() {
+            when(authServiceClient.getUserById(eq(2), any()))
+                    .thenThrow(new RuntimeException("Service down"));
+
+            assertThatThrownBy(() -> followService.follow(1, 2))
+                    .isInstanceOf(UserNotFoundException.class)
+                    .hasMessageContaining("User not found");
+        }
+
+        @Test
+        @DisplayName("Should still save follow when RabbitMQ publish fails")
+        void follow_rabbitFails_stillSavesFollow() {
+            Follow saved = buildFollow(10, 1, 2);
+
+            when(authServiceClient.getUserById(eq(2), any()))
+                    .thenReturn(buildValidUserResponse());
+            when(followRepository.existsByFollowerIdAndFolloweeId(1, 2)).thenReturn(false);
+            when(followRepository.save(any(Follow.class))).thenReturn(saved);
+            doThrow(new RuntimeException("RabbitMQ down"))
+                    .when(rabbitTemplate).convertAndSend(anyString(), anyString(), any(Object.class));
+
+            ApiResponseDTO<FollowResponseDTO> response = followService.follow(1, 2);
+
+            assertThat(response.isSuccess()).isTrue();
+            verify(followRepository).save(any(Follow.class));
         }
     }
 
@@ -108,16 +169,16 @@ class FollowServiceImplTest {
         @Test
         @DisplayName("Should unfollow successfully when follow exists")
         void unfollow_success() {
-            // Given
             Follow existing = buildFollow(10, 1, 2);
+
+            when(authServiceClient.getUserById(eq(2), any()))
+                    .thenReturn(buildValidUserResponse());
             when(followRepository.findByFollowerIdAndFolloweeId(1, 2))
                     .thenReturn(Optional.of(existing));
 
-            // When
             ApiResponseDTO<String> response = followService.unfollow(1, 2);
 
-            // Then
-            assertThat(response.isSuccess()).isTrue();;
+            assertThat(response.isSuccess()).isTrue();
             assertThat(response.getMessage()).isEqualTo("Unfollowed successfully");
             verify(followRepository).deleteByFollowerIdAndFolloweeId(1, 2);
         }
@@ -125,16 +186,27 @@ class FollowServiceImplTest {
         @Test
         @DisplayName("Should throw FollowNotFoundException when not currently following")
         void unfollow_notFollowing_throwsException() {
-            // Given
+            when(authServiceClient.getUserById(eq(99), any()))
+                    .thenReturn(buildValidUserResponse());
             when(followRepository.findByFollowerIdAndFolloweeId(1, 99))
                     .thenReturn(Optional.empty());
 
-            // When / Then
             assertThatThrownBy(() -> followService.unfollow(1, 99))
                     .isInstanceOf(FollowNotFoundException.class)
                     .hasMessageContaining("not following");
 
             verify(followRepository, never()).deleteByFollowerIdAndFolloweeId(any(), any());
+        }
+
+        @Test
+        @DisplayName("Should throw UserNotFoundException when user not found on unfollow")
+        void unfollow_userNotFound_throwsException() {
+            when(authServiceClient.getUserById(eq(99), any()))
+                    .thenThrow(new RuntimeException("Service down"));
+
+            assertThatThrownBy(() -> followService.unfollow(1, 99))
+                    .isInstanceOf(UserNotFoundException.class)
+                    .hasMessageContaining("User not found");
         }
     }
 

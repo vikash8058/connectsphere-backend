@@ -27,6 +27,10 @@
         <!-- Java version -->
         <java.version>17</java.version>
 
+        <!-- Sonar url -->
+        <sonar.host.url>http://localhost:9000</sonar.host.url>
+
+
         <!-- Spring Cloud version -->
         <spring-cloud.version>2023.0.0</spring-cloud.version>
     </properties>
@@ -189,6 +193,30 @@
                 </configuration>
             </plugin>
 
+            <!-- JaCoCo - generates test coverage report for SonarQube -->
+            <plugin>
+                <groupId>org.jacoco</groupId>
+                <artifactId>jacoco-maven-plugin</artifactId>
+                <version>0.8.11</version>
+                <executions>
+                    <!-- Prepares JaCoCo agent before tests run -->
+                    <execution>
+                        <id>prepare-agent</id>
+                        <goals>
+                            <goal>prepare-agent</goal>
+                        </goals>
+                    </execution>
+                    <!-- Generates the report after tests finish -->
+                    <execution>
+                        <id>report</id>
+                        <phase>verify</phase>
+                        <goals>
+                            <goal>report</goal>
+                        </goals>
+                    </execution>
+                </executions>
+            </plugin>
+
 			<!-- Spring Boot Maven Plugin (for running & packaging app) -->
             <plugin>
                 <groupId>org.springframework.boot</groupId>
@@ -205,12 +233,20 @@
                 </configuration>
 
             </plugin>
+
+            <!-- SonarQube Maven Plugin -->
+            <plugin>
+                <groupId>org.sonarsource.scanner.maven</groupId>
+                <artifactId>sonar-maven-plugin</artifactId>
+                <version>4.0.0.4121</version>
+            </plugin>
+
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-surefire-plugin</artifactId>
                 <version>3.2.5</version>
                 <configuration>
-                    <argLine>-Dnet.bytebuddy.experimental=true</argLine>
+                    <argLine>@{argLine} -Dnet.bytebuddy.experimental=true</argLine>
                 </configuration>
             </plugin>
         </plugins>

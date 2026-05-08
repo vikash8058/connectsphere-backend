@@ -37,6 +37,10 @@ public class JwtTokenProvider {
     @Value("${jwt.refresh-expiration}")
     private Long refreshTokenExpiration;
 
+    private static final String CLAIM_USER_ID = "userId";
+    private static final String CLAIM_ROLE = "role";
+    private static final String CLAIM_TOKEN_TYPE = "tokenType";
+
     private SecretKey getSigningKey() {
         return Keys.hmacShaKeyFor(jwtSecret.getBytes(StandardCharsets.UTF_8));
     }
@@ -47,11 +51,11 @@ public class JwtTokenProvider {
 
         return Jwts.builder()
                 .subject(user.getEmail())
-                .claim("userId", user.getUserId())
+                .claim(CLAIM_USER_ID, user.getUserId())
                 .claim("username", user.getUsername())
-                .claim("role", user.getRole().name())
+                .claim(CLAIM_ROLE, user.getRole().name())
                 .claim("fullName", user.getFullName())
-                .claim("tokenType", "ACCESS")
+                .claim(CLAIM_TOKEN_TYPE, "ACCESS")
                 .issuedAt(now)
                 .expiration(expiry)
                 .signWith(getSigningKey())
@@ -74,8 +78,8 @@ public class JwtTokenProvider {
 
         return Jwts.builder()
                 .subject(user.getEmail())
-                .claim("userId", user.getUserId())
-                .claim("tokenType", "REFRESH")
+                .claim(CLAIM_USER_ID, user.getUserId())
+                .claim(CLAIM_TOKEN_TYPE, "REFRESH")
                 .issuedAt(now)
                 .expiration(expiry)
                 .signWith(getSigningKey())
@@ -84,17 +88,26 @@ public class JwtTokenProvider {
 
     public boolean validateToken(String token) {
         try {
-            Jwts.parser().verifyWith(getSigningKey()).build().parseSignedClaims(token);
+            Jwts.parser()
+                    .verifyWith(getSigningKey())
+                    .build()
+                    .parseSignedClaims(token);
+
             return true;
+
         } catch (ExpiredJwtException e) {
             log.warn("JWT expired: {}", e.getMessage());
+
         } catch (MalformedJwtException e) {
             log.warn("JWT malformed: {}", e.getMessage());
-        } catch (SecurityException e) {
+
+        } catch (io.jsonwebtoken.security.SignatureException e) {
             log.warn("JWT signature invalid: {}", e.getMessage());
+
         } catch (IllegalArgumentException e) {
             log.warn("JWT null/empty: {}", e.getMessage());
         }
+
         return false;
     }
 
@@ -105,12 +118,12 @@ public class JwtTokenProvider {
 
     public String getRoleFromToken(String token) {
         return (String) Jwts.parser().verifyWith(getSigningKey()).build()
-                .parseSignedClaims(token).getPayload().get("role");
+                .parseSignedClaims(token).getPayload().get(CLAIM_ROLE);
     }
 
     public Integer getUserIdFromToken(String token) {
         return (Integer) Jwts.parser().verifyWith(getSigningKey()).build()
-                .parseSignedClaims(token).getPayload().get("userId");
+                .parseSignedClaims(token).getPayload().get(CLAIM_USER_ID);
     }
 
     public Long getAccessTokenExpiration() {
