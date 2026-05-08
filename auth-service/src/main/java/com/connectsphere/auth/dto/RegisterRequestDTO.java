@@ -30,7 +30,7 @@ public class RegisterRequestDTO {
     @NotBlank(message = "A secure password is required to protect your account")
     @Size(min = 8, message = "For your security, please use a password with at least 8 characters")
     @Pattern(
-        regexp = "^(?=.*[0-9])(?=.*[a-z])(?=.*[A-Z])(?=.*[@#$%^&+=]).*$",
+        regexp = "^(?=.*\\d)(?=.*[a-z])(?=.*[A-Z])(?=.*[@#$%^&+=]).*$",
         message = "Your password must include at least one uppercase letter, one lowercase letter, one number, and one special character"
     )
     private String password;

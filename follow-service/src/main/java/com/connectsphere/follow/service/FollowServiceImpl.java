@@ -21,7 +21,6 @@ import org.springframework.web.context.request.RequestContextHolder;
 import org.springframework.web.context.request.ServletRequestAttributes;
 
 import java.util.List;
-import java.util.stream.Collectors;
 
 @Service
 @Slf4j
@@ -40,33 +39,17 @@ public class FollowServiceImpl implements FollowService {
 
     // FOLLOW
 
-    // Update the follow() method:
     @Override
     @Transactional
     public ApiResponseDTO<FollowResponseDTO> follow(Integer followerId, Integer followeeId) {
         log.info("Follow request — followerId: {}, followeeId: {}", followerId, followeeId);
 
-        // Check 1 — self-follow
         if (followerId.equals(followeeId)) {
             throw new SelfFollowException("You cannot follow yourself");
         }
 
-        // Check 2 — verify followee actually exists in auth-service
-        // Extract JWT from the current incoming request and forward it
-        String authHeader = getAuthorizationHeader();
-        try {
-            UserExistsResponseDTO response = authServiceClient.getUserById(followeeId, authHeader);
-            if (response == null || !response.isSuccess() || response.getData() == null) {
-                throw new UserNotFoundException("User not found with id: " + followeeId);
-            }
-        } catch (UserNotFoundException e) {
-            throw e;
-        } catch (Exception e) {
-            log.error("Could not verify followee existence (userId={}): {}", followeeId, e.getMessage());
-            throw new UserNotFoundException("User not found with id: " + followeeId);
-        }
+        verifyUserExists(followeeId);
 
-        // Check 3 — duplicate follow
         if (followRepository.existsByFollowerIdAndFolloweeId(followerId, followeeId)) {
             throw new AlreadyFollowingException("You are already following this user");
         }
@@ -84,17 +67,6 @@ public class FollowServiceImpl implements FollowService {
         return ApiResponseDTO.success("Followed successfully", toDTO(saved));
     }
 
-    // Add this private helper at the bottom of the class
-    private String getAuthorizationHeader() {
-        ServletRequestAttributes attributes =
-                (ServletRequestAttributes) RequestContextHolder.getRequestAttributes();
-        if (attributes != null) {
-            HttpServletRequest request = attributes.getRequest();
-            return request.getHeader("Authorization");
-        }
-        return null;
-    }
-
     // UNFOLLOW
 
     @Override
@@ -102,25 +74,11 @@ public class FollowServiceImpl implements FollowService {
     public ApiResponseDTO<String> unfollow(Integer followerId, Integer followeeId) {
         log.info("Unfollow request — followerId: {}, followeeId: {}", followerId, followeeId);
 
-        // Step 1 — verify followee actually exists
-        String authHeader = getAuthorizationHeader();
-        try {
-            UserExistsResponseDTO response = authServiceClient.getUserById(followeeId, authHeader);
-            if (response == null || !response.isSuccess() || response.getData() == null) {
-                throw new UserNotFoundException("User not found with id: " + followeeId);
-            }
-        } catch (UserNotFoundException e) {
-            throw e;
-        } catch (Exception e) {
-            log.error("Could not verify followee existence (userId={}): {}", followeeId, e.getMessage());
-            throw new UserNotFoundException("User not found with id: " + followeeId);
-        }
+        verifyUserExists(followeeId);
 
-        // Step 2 — check if actually following
         followRepository.findByFollowerIdAndFolloweeId(followerId, followeeId)
                 .orElseThrow(() -> new FollowNotFoundException("You are not following this user"));
 
-        // Step 3 — delete
         followRepository.deleteByFollowerIdAndFolloweeId(followerId, followeeId);
         log.info("Unfollow complete — followerId: {}, followeeId: {}", followerId, followeeId);
 
@@ -141,11 +99,8 @@ public class FollowServiceImpl implements FollowService {
     @Override
     public ApiResponseDTO<List<FollowResponseDTO>> getFollowers(Integer userId) {
         log.debug("Fetching followers for userId: {}", userId);
-        List<FollowResponseDTO> followers = followRepository
-                .findByFolloweeIdAndStatus(userId, FollowStatus.ACTIVE)
-                .stream()
-                .map(this::toDTO)
-                .collect(Collectors.toList());
+        List<FollowResponseDTO> followers = toDTOList(
+                followRepository.findByFolloweeIdAndStatus(userId, FollowStatus.ACTIVE));
         return ApiResponseDTO.success("Followers fetched successfully", followers);
     }
 
@@ -154,11 +109,8 @@ public class FollowServiceImpl implements FollowService {
     @Override
     public ApiResponseDTO<List<FollowResponseDTO>> getFollowing(Integer userId) {
         log.debug("Fetching following list for userId: {}", userId);
-        List<FollowResponseDTO> following = followRepository
-                .findByFollowerIdAndStatus(userId, FollowStatus.ACTIVE)
-                .stream()
-                .map(this::toDTO)
-                .collect(Collectors.toList());
+        List<FollowResponseDTO> following = toDTOList(
+                followRepository.findByFollowerIdAndStatus(userId, FollowStatus.ACTIVE));
         return ApiResponseDTO.success("Following list fetched successfully", following);
     }
 
@@ -219,7 +171,37 @@ public class FollowServiceImpl implements FollowService {
 
     // PRIVATE HELPERS
 
-    /** Map Follow entity → FollowResponseDTO */
+    private void verifyUserExists(Integer userId) {
+        String authHeader = getAuthorizationHeader();
+        try {
+            UserExistsResponseDTO response = authServiceClient.getUserById(userId, authHeader);
+            if (response == null || !response.isSuccess() || response.getData() == null) {
+                throw new UserNotFoundException("User not found with id: " + userId);
+            }
+        } catch (UserNotFoundException e) {
+            throw e;
+        } catch (Exception e) {
+            log.error("Could not verify user existence (userId={}): {}", userId, e.getMessage());
+            throw new UserNotFoundException("User not found with id: " + userId);
+        }
+    }
+
+    private String getAuthorizationHeader() {
+        ServletRequestAttributes attributes =
+                (ServletRequestAttributes) RequestContextHolder.getRequestAttributes();
+        if (attributes != null) {
+            HttpServletRequest request = attributes.getRequest();
+            return request.getHeader("Authorization");
+        }
+        return null;
+    }
+
+    private List<FollowResponseDTO> toDTOList(List<Follow> follows) {
+        return follows.stream()
+                .map(this::toDTO)
+                .toList();
+    }
+
     private FollowResponseDTO toDTO(Follow follow) {
         return FollowResponseDTO.builder()
                 .followId(follow.getFollowId())
@@ -230,11 +212,6 @@ public class FollowServiceImpl implements FollowService {
                 .build();
     }
 
-    /**
-     * Publish FOLLOW notification to RabbitMQ.
-     * Recipient = followeeId (person who got followed).
-     * Actor     = followerId (person who followed).
-     */
     private void publishFollowNotification(Integer followerId, Integer followeeId) {
         try {
             NotificationEventMessage message = NotificationEventMessage.builder()

@@ -22,26 +22,6 @@ import static org.assertj.core.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
-/**
- * LikeServiceImplTest - Unit tests for Like Service business logic
- *
- * Uses Mockito to mock:
- *   - LikeRepository        → no DB needed
- *   - PostServiceClient     → no actual Feign HTTP call
- *   - CommentServiceClient  → no actual Feign HTTP call
- *
- * Tests cover:
- *  - likeTarget (POST success, COMMENT success, already liked)
- *  - unlikeTarget (success, not found)
- *  - hasLiked (true, false)
- *  - getLikesByTarget
- *  - getLikesByUser
- *  - getLikeCount
- *  - getLikeCountByType (valid, invalid reactionType)
- *  - getReactionSummary
- *  - changeReaction (success, no existing reaction)
- *  - Feign counter sync (post increment, comment increment, graceful failure)
- */
 @ExtendWith(MockitoExtension.class)
 @DisplayName("LikeServiceImpl Unit Tests")
 class LikeServiceImplTest {

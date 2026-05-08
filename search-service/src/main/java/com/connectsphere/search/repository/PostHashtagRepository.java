@@ -9,18 +9,6 @@ import org.springframework.stereotype.Repository;
 
 import java.util.List;
 
-/**
- * PostHashtagRepository - Data access layer for PostHashtag join entity
- *
- * Methods as per ConnectSphere case study section 4.8:
- *   findPostsByHashtag()     - All postIds tagged with a specific hashtag
- *   findHashtagsByPostId()   - All hashtags on a specific post
- *   countPostsByHashtag()    - How many posts use a hashtag (by tag string)
- *   deleteByPostId()         - Remove all hashtag mappings for a deleted post
- *
- * Additional:
- *   existsByPostIdAndHashtagId() - Deduplication check before inserting mapping
- */
 @Repository
 public interface PostHashtagRepository extends JpaRepository<PostHashtag, Integer> {
 
@@ -59,6 +47,16 @@ public interface PostHashtagRepository extends JpaRepository<PostHashtag, Intege
     @Modifying
     @Query("DELETE FROM PostHashtag ph WHERE ph.postId = :postId")
     void deleteByPostId(@Param("postId") Integer postId);
+
+    /**
+     * Delete a specific post-hashtag mapping by postId and hashtagId.
+     * Called during reIndexPost when a specific tag is removed from a post,
+     * so only that mapping is deleted (not all mappings for the post).
+     */
+    @Modifying
+    @Query("DELETE FROM PostHashtag ph WHERE ph.postId = :postId AND ph.hashtag.hashtagId = :hashtagId")
+    void deleteByPostIdAndHashtagId(@Param("postId") Integer postId,
+                                    @Param("hashtagId") Integer hashtagId);
 
     /**
      * Count how many posts use a specific hashtag (by hashtagId).

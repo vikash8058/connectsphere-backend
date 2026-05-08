@@ -109,13 +109,16 @@ public class SearchServiceImpl implements SearchService {
 
         log.info("reIndexPost postId={} — removed: {}, added: {}", postId, removedTags, addedTags);
 
-        // Remove old mappings
-        for (String tag : removedTags) {
-            hashtagRepository.findByTag(tag).ifPresent(hashtag -> {
-                postHashtagRepository.deleteByPostId(postId);  // delete specific mapping
-                hashtagRepository.decrementPostCount(hashtag.getHashtagId());
-                log.debug("Removed hashtag mapping: postId={} tag={}", postId, tag);
-            });
+        if (!removedTags.isEmpty()) {
+            List<PostHashtag> existingMappings = postHashtagRepository.findByPostId(postId);
+            for (PostHashtag mapping : existingMappings) {
+                if (removedTags.contains(mapping.getHashtag().getTag())) {
+                    postHashtagRepository.deleteByPostIdAndHashtagId(
+                            postId, mapping.getHashtag().getHashtagId());
+                    hashtagRepository.decrementPostCount(mapping.getHashtag().getHashtagId());
+                    log.debug("Removed hashtag mapping: postId={} tag={}", postId, mapping.getHashtag().getTag());
+                }
+            }
         }
 
         // Add new mappings
@@ -376,14 +379,14 @@ public class SearchServiceImpl implements SearchService {
     /**
      * Internal: search posts by hashtag tag string.
      * Fetches postIds from local index → enriches via post-service Feign call.
-     * 
+     *
      * Handles stale data: if a post is in the hashtag index but was deleted in post-service,
      * enrichPostResult() returns null and we filter it out. The mapping will be auto-cleaned
      * on the next post update event.
      */
     private List<PostSearchResultDTO> searchByHashtagInternal(String tag) {
         List<Integer> postIds = postHashtagRepository.findPostIdsByHashtagTag(tag);
-        
+
         if (postIds.isEmpty()) {
             log.debug("searchByHashtagInternal — no postIds found for tag='{}'", tag);
             return Collections.emptyList();
@@ -406,12 +409,12 @@ public class SearchServiceImpl implements SearchService {
                 })
                 .filter(Objects::nonNull)
                 .collect(Collectors.toList());
-        
+
         if (results.isEmpty() && !postIds.isEmpty()) {
-            log.warn("searchByHashtagInternal — {} postIds found for tag='{}' but all were filtered (possibly deleted posts)", 
-                     postIds.size(), tag);
+            log.warn("searchByHashtagInternal — {} postIds found for tag='{}' but all were filtered (possibly deleted posts)",
+                    postIds.size(), tag);
         }
-        
+
         return results;
     }
 

@@ -5,6 +5,7 @@ import com.connectsphere.notification.entity.Notification;
 import com.connectsphere.notification.entity.NotificationType;
 import com.connectsphere.notification.exception.NotificationNotFoundException;
 import com.connectsphere.notification.exception.UnauthorizedActionException;
+import com.connectsphere.notification.client.AuthClient;
 import com.connectsphere.notification.repository.NotificationRepository;
 import org.junit.jupiter.api.*;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -32,6 +33,9 @@ class NotificationServiceImplTest {
 
     @Mock
     private JavaMailSender mailSender;
+
+    @Mock
+    private AuthClient authClient;
 
     @InjectMocks
     private NotificationServiceImpl notificationService;
@@ -468,6 +472,411 @@ class NotificationServiceImplTest {
 
             assertThat(response.isSuccess()).isFalse();
             assertThat(response.getMessage()).contains("Failed to send email");
+        }
+    }
+
+    // ── createNotification with AuthClient enrichment ───
+
+    @Nested
+    @DisplayName("createNotification() with AuthClient")
+    class CreateNotificationWithAuthTests {
+
+        @Test
+        @DisplayName("Should use actor fullName from AuthClient")
+        void shouldUseActorFullName() {
+            CreateNotificationRequestDTO request = buildCreateRequest(2, 1, NotificationType.LIKE);
+            request.setMessage(null);
+
+            UserDataDTO actorData = new UserDataDTO(true,
+                    new UserDataDTO.UserDTO(1, "john", "John Doe", "john@test.com", null));
+            when(authClient.getUserById(1)).thenReturn(actorData);
+            UserDataDTO recipientData = new UserDataDTO(true,
+                    new UserDataDTO.UserDTO(2, "jane", "Jane", "jane@test.com", null));
+            when(authClient.getUserById(2)).thenReturn(recipientData);
+
+            when(notificationRepository.findByActorIdAndTargetIdAndType(1, 10, NotificationType.LIKE))
+                    .thenReturn(Optional.empty());
+            Notification saved = buildNotification(1, 2, 1, NotificationType.LIKE, false);
+            when(notificationRepository.save(any())).thenReturn(saved);
+
+            ApiResponseDTO<NotificationResponseDTO> resp = notificationService.createNotification(request);
+            assertThat(resp.isSuccess()).isTrue();
+        }
+
+        @Test
+        @DisplayName("Should fallback to username when fullName is null")
+        void shouldFallbackToUsername() {
+            CreateNotificationRequestDTO request = buildCreateRequest(2, 1, NotificationType.COMMENT);
+            request.setMessage(null);
+
+            when(authClient.getUserById(1)).thenReturn(new UserDataDTO(true,
+                    new UserDataDTO.UserDTO(1, "john", null, "john@test.com", null)));
+            when(authClient.getUserById(2)).thenReturn(new UserDataDTO(true,
+                    new UserDataDTO.UserDTO(2, "jane", "Jane", "jane@test.com", null)));
+
+            when(notificationRepository.findByActorIdAndTargetIdAndType(1, 10, NotificationType.COMMENT))
+                    .thenReturn(Optional.empty());
+            when(notificationRepository.save(any())).thenReturn(
+                    buildNotification(1, 2, 1, NotificationType.COMMENT, false));
+
+            ApiResponseDTO<NotificationResponseDTO> resp = notificationService.createNotification(request);
+            assertThat(resp.isSuccess()).isTrue();
+        }
+
+        @Test
+        @DisplayName("Should handle AuthClient failure gracefully for actor")
+        void shouldHandleActorFetchFailure() {
+            CreateNotificationRequestDTO request = buildCreateRequest(2, 1, NotificationType.REPLY);
+            request.setMessage(null);
+
+            when(authClient.getUserById(1)).thenThrow(new RuntimeException("Feign down"));
+            when(authClient.getUserById(2)).thenReturn(null);
+
+            when(notificationRepository.findByActorIdAndTargetIdAndType(1, 10, NotificationType.REPLY))
+                    .thenReturn(Optional.empty());
+            when(notificationRepository.save(any())).thenReturn(
+                    buildNotification(1, 2, 1, NotificationType.REPLY, false));
+
+            ApiResponseDTO<NotificationResponseDTO> resp = notificationService.createNotification(request);
+            assertThat(resp.isSuccess()).isTrue();
+        }
+
+        @Test
+        @DisplayName("Should handle null AuthClient response for recipient")
+        void shouldHandleNullRecipientData() {
+            CreateNotificationRequestDTO request = buildCreateRequest(2, 1, NotificationType.MENTION);
+            request.setMessage(null);
+
+            when(authClient.getUserById(1)).thenReturn(new UserDataDTO(true,
+                    new UserDataDTO.UserDTO(1, "john", "John", "j@b.com", null)));
+            when(authClient.getUserById(2)).thenReturn(new UserDataDTO(true, null));
+
+            when(notificationRepository.findByActorIdAndTargetIdAndType(1, 10, NotificationType.MENTION))
+                    .thenReturn(Optional.empty());
+            when(notificationRepository.save(any())).thenReturn(
+                    buildNotification(1, 2, 1, NotificationType.MENTION, false));
+
+            ApiResponseDTO<NotificationResponseDTO> resp = notificationService.createNotification(request);
+            assertThat(resp.isSuccess()).isTrue();
+        }
+
+        @Test
+        @DisplayName("Should send email for SYSTEM type (high priority)")
+        void shouldSendEmailForSystemType() {
+            CreateNotificationRequestDTO request = buildCreateRequest(2, 1, NotificationType.SYSTEM);
+            request.setMessage("System alert");
+
+            when(authClient.getUserById(1)).thenReturn(new UserDataDTO(true,
+                    new UserDataDTO.UserDTO(1, "admin", "Admin", "a@b.com", null)));
+            when(authClient.getUserById(2)).thenReturn(new UserDataDTO(true,
+                    new UserDataDTO.UserDTO(2, "user", "User", "user@test.com", null)));
+
+            when(notificationRepository.findByActorIdAndTargetIdAndType(1, 10, NotificationType.SYSTEM))
+                    .thenReturn(Optional.empty());
+            when(notificationRepository.save(any())).thenReturn(
+                    buildNotification(1, 2, 1, NotificationType.SYSTEM, false));
+
+            notificationService.createNotification(request);
+            verify(mailSender).send(any(SimpleMailMessage.class));
+        }
+
+        @Test
+        @DisplayName("Should send email for PAYMENT_SUCCESS type")
+        void shouldSendEmailForPaymentSuccess() {
+            CreateNotificationRequestDTO request = buildCreateRequest(2, 1, NotificationType.PAYMENT_SUCCESS);
+            request.setMessage(null);
+
+            when(authClient.getUserById(1)).thenReturn(new UserDataDTO(true,
+                    new UserDataDTO.UserDTO(1, "sys", "System", "s@b.com", null)));
+            when(authClient.getUserById(2)).thenReturn(new UserDataDTO(true,
+                    new UserDataDTO.UserDTO(2, "user", "User", "user@test.com", null)));
+
+            when(notificationRepository.findByActorIdAndTargetIdAndType(1, 10, NotificationType.PAYMENT_SUCCESS))
+                    .thenReturn(Optional.empty());
+            when(notificationRepository.save(any())).thenReturn(
+                    buildNotification(1, 2, 1, NotificationType.PAYMENT_SUCCESS, false));
+
+            notificationService.createNotification(request);
+            verify(mailSender).send(any(SimpleMailMessage.class));
+        }
+
+        @Test
+        @DisplayName("Should send email for SUBSCRIPTION_EXPIRY type")
+        void shouldSendEmailForSubscriptionExpiry() {
+            CreateNotificationRequestDTO request = buildCreateRequest(2, 1, NotificationType.SUBSCRIPTION_EXPIRY);
+            request.setMessage(null);
+
+            when(authClient.getUserById(1)).thenReturn(new UserDataDTO(true,
+                    new UserDataDTO.UserDTO(1, "sys", "System", "s@b.com", null)));
+            when(authClient.getUserById(2)).thenReturn(new UserDataDTO(true,
+                    new UserDataDTO.UserDTO(2, "user", "User", "user@test.com", null)));
+
+            when(notificationRepository.findByActorIdAndTargetIdAndType(1, 10, NotificationType.SUBSCRIPTION_EXPIRY))
+                    .thenReturn(Optional.empty());
+            when(notificationRepository.save(any())).thenReturn(
+                    buildNotification(1, 2, 1, NotificationType.SUBSCRIPTION_EXPIRY, false));
+
+            notificationService.createNotification(request);
+            verify(mailSender).send(any(SimpleMailMessage.class));
+        }
+
+        @Test
+        @DisplayName("Should NOT send email for LIKE type (low priority)")
+        void shouldNotSendEmailForLikeType() {
+            CreateNotificationRequestDTO request = buildCreateRequest(2, 1, NotificationType.LIKE);
+
+            when(authClient.getUserById(1)).thenReturn(new UserDataDTO(true,
+                    new UserDataDTO.UserDTO(1, "john", "John", "j@b.com", null)));
+            when(authClient.getUserById(2)).thenReturn(new UserDataDTO(true,
+                    new UserDataDTO.UserDTO(2, "user", "User", "user@test.com", null)));
+
+            when(notificationRepository.findByActorIdAndTargetIdAndType(1, 10, NotificationType.LIKE))
+                    .thenReturn(Optional.empty());
+            when(notificationRepository.save(any())).thenReturn(
+                    buildNotification(1, 2, 1, NotificationType.LIKE, false));
+
+            notificationService.createNotification(request);
+            verify(mailSender, never()).send(any(SimpleMailMessage.class));
+        }
+
+        @Test
+        @DisplayName("Should check follower milestone for FOLLOW type")
+        void shouldCheckFollowerMilestone() {
+            CreateNotificationRequestDTO request = buildCreateRequest(2, 1, NotificationType.FOLLOW);
+            request.setMessage(null);
+
+            when(authClient.getUserById(1)).thenReturn(new UserDataDTO(true,
+                    new UserDataDTO.UserDTO(1, "john", "John", "j@b.com", null)));
+            when(authClient.getUserById(2)).thenReturn(new UserDataDTO(true,
+                    new UserDataDTO.UserDTO(2, "user", "User", "user@test.com", null)));
+
+            when(notificationRepository.findByActorIdAndTargetIdAndType(1, 10, NotificationType.FOLLOW))
+                    .thenReturn(Optional.empty());
+            when(notificationRepository.save(any())).thenReturn(
+                    buildNotification(1, 2, 1, NotificationType.FOLLOW, false));
+            when(notificationRepository.countByRecipientIdAndType(2, NotificationType.FOLLOW))
+                    .thenReturn(100L);
+
+            notificationService.createNotification(request);
+            verify(mailSender).send(any(SimpleMailMessage.class));
+        }
+
+        @Test
+        @DisplayName("Should NOT email for FOLLOW when not at milestone")
+        void shouldNotEmailForNonMilestoneFollow() {
+            CreateNotificationRequestDTO request = buildCreateRequest(2, 1, NotificationType.FOLLOW);
+            request.setMessage(null);
+
+            when(authClient.getUserById(1)).thenReturn(new UserDataDTO(true,
+                    new UserDataDTO.UserDTO(1, "john", "John", "j@b.com", null)));
+            when(authClient.getUserById(2)).thenReturn(new UserDataDTO(true,
+                    new UserDataDTO.UserDTO(2, "user", "User", "user@test.com", null)));
+
+            when(notificationRepository.findByActorIdAndTargetIdAndType(1, 10, NotificationType.FOLLOW))
+                    .thenReturn(Optional.empty());
+            when(notificationRepository.save(any())).thenReturn(
+                    buildNotification(1, 2, 1, NotificationType.FOLLOW, false));
+            when(notificationRepository.countByRecipientIdAndType(2, NotificationType.FOLLOW))
+                    .thenReturn(50L);
+
+            notificationService.createNotification(request);
+            verify(mailSender, never()).send(any(SimpleMailMessage.class));
+        }
+
+        @Test
+        @DisplayName("Should handle milestone check exception gracefully")
+        void shouldHandleMilestoneCheckException() {
+            CreateNotificationRequestDTO request = buildCreateRequest(2, 1, NotificationType.FOLLOW);
+            request.setMessage(null);
+
+            when(authClient.getUserById(1)).thenReturn(new UserDataDTO(true,
+                    new UserDataDTO.UserDTO(1, "john", "John", "j@b.com", null)));
+            when(authClient.getUserById(2)).thenReturn(new UserDataDTO(true,
+                    new UserDataDTO.UserDTO(2, "user", "User", "user@test.com", null)));
+
+            when(notificationRepository.findByActorIdAndTargetIdAndType(1, 10, NotificationType.FOLLOW))
+                    .thenReturn(Optional.empty());
+            when(notificationRepository.save(any())).thenReturn(
+                    buildNotification(1, 2, 1, NotificationType.FOLLOW, false));
+            when(notificationRepository.countByRecipientIdAndType(2, NotificationType.FOLLOW))
+                    .thenThrow(new RuntimeException("DB error"));
+
+            notificationService.createNotification(request);
+            verify(mailSender, never()).send(any(SimpleMailMessage.class));
+        }
+
+        @Test
+        @DisplayName("Should use existing message when not starting with Someone")
+        void shouldUseExistingNonGenericMessage() {
+            CreateNotificationRequestDTO request = buildCreateRequest(2, 1, NotificationType.LIKE);
+            request.setMessage("Custom message from service");
+
+            when(authClient.getUserById(1)).thenReturn(null);
+
+            when(notificationRepository.findByActorIdAndTargetIdAndType(1, 10, NotificationType.LIKE))
+                    .thenReturn(Optional.empty());
+            when(notificationRepository.save(any())).thenReturn(
+                    buildNotification(1, 2, 1, NotificationType.LIKE, false));
+
+            ApiResponseDTO<NotificationResponseDTO> resp = notificationService.createNotification(request);
+            assertThat(resp.isSuccess()).isTrue();
+        }
+
+        @Test
+        @DisplayName("Should handle email send failure in sendEmailAlertAsync")
+        void shouldHandleEmailSendFailure() {
+            CreateNotificationRequestDTO request = buildCreateRequest(2, 1, NotificationType.SYSTEM);
+            request.setMessage("Alert");
+
+            when(authClient.getUserById(1)).thenReturn(new UserDataDTO(true,
+                    new UserDataDTO.UserDTO(1, "admin", "Admin", "a@b.com", null)));
+            when(authClient.getUserById(2)).thenReturn(new UserDataDTO(true,
+                    new UserDataDTO.UserDTO(2, "user", "User", "user@test.com", null)));
+
+            when(notificationRepository.findByActorIdAndTargetIdAndType(1, 10, NotificationType.SYSTEM))
+                    .thenReturn(Optional.empty());
+            when(notificationRepository.save(any())).thenReturn(
+                    buildNotification(1, 2, 1, NotificationType.SYSTEM, false));
+            doThrow(new RuntimeException("SMTP fail")).when(mailSender).send(any(SimpleMailMessage.class));
+
+            ApiResponseDTO<NotificationResponseDTO> resp = notificationService.createNotification(request);
+            assertThat(resp.isSuccess()).isTrue();
+        }
+    }
+
+    // ── Bulk SYSTEM email path ───
+
+    @Nested
+    @DisplayName("sendBulkNotification() with SYSTEM emails")
+    class BulkSystemEmailTests {
+
+        @Test
+        @DisplayName("Should send emails for SYSTEM type bulk notification")
+        void shouldSendEmailsForSystemBulk() {
+            BulkNotificationRequestDTO request = BulkNotificationRequestDTO.builder()
+                    .recipientIds(List.of(1, 2))
+                    .message("System broadcast")
+                    .type("SYSTEM")
+                    .deepLinkUrl("/announcements")
+                    .build();
+
+            when(authClient.getUserById(1)).thenReturn(new UserDataDTO(true,
+                    new UserDataDTO.UserDTO(1, "u1", "User1", "u1@test.com", null)));
+            when(authClient.getUserById(2)).thenReturn(new UserDataDTO(true,
+                    new UserDataDTO.UserDTO(2, "u2", "User2", "u2@test.com", null)));
+
+            notificationService.sendBulkNotification(request);
+            verify(mailSender, times(2)).send(any(SimpleMailMessage.class));
+        }
+
+        @Test
+        @DisplayName("Should handle email failure during bulk SYSTEM gracefully")
+        void shouldHandleBulkEmailFailure() {
+            BulkNotificationRequestDTO request = BulkNotificationRequestDTO.builder()
+                    .recipientIds(List.of(1))
+                    .message("Broadcast")
+                    .type("SYSTEM")
+                    .build();
+
+            when(authClient.getUserById(1)).thenThrow(new RuntimeException("Feign down"));
+
+            notificationService.sendBulkNotification(request);
+            verify(mailSender, never()).send(any(SimpleMailMessage.class));
+        }
+    }
+
+    // ── getAll / getByType ───
+
+    @Nested
+    @DisplayName("getAll() and getByType()")
+    class GetAllAndByTypeTests {
+
+        @Test
+        @DisplayName("Should return all notifications for admin")
+        void shouldGetAll() {
+            when(notificationRepository.findAll()).thenReturn(
+                    List.of(buildNotification(1, 2, 1, NotificationType.LIKE, false)));
+
+            ApiResponseDTO<List<NotificationResponseDTO>> resp = notificationService.getAll();
+            assertThat(resp.isSuccess()).isTrue();
+            assertThat(resp.getData()).hasSize(1);
+        }
+
+        @Test
+        @DisplayName("Should return notifications filtered by type")
+        void shouldGetByType() {
+            when(notificationRepository.findByTypeOrderByCreatedAtDesc(NotificationType.FOLLOW))
+                    .thenReturn(List.of(buildNotification(1, 2, 1, NotificationType.FOLLOW, false)));
+
+            ApiResponseDTO<List<NotificationResponseDTO>> resp =
+                    notificationService.getByType(NotificationType.FOLLOW);
+            assertThat(resp.isSuccess()).isTrue();
+            assertThat(resp.getData()).hasSize(1);
+        }
+    }
+
+    // ── enrichWithActorInfo ───
+
+    @Nested
+    @DisplayName("enrichWithActorInfo() via getByRecipient")
+    class EnrichActorInfoTests {
+
+        @Test
+        @DisplayName("Should replace Someone in message with real actor name")
+        void shouldReplaceGenericMessage() {
+            Notification n = buildNotification(1, 5, 2, NotificationType.LIKE, false);
+            n.setMessage("Someone liked your post");
+            when(notificationRepository.findByRecipientIdOrderByCreatedAtDesc(5))
+                    .thenReturn(List.of(n));
+            when(authClient.getUserById(2)).thenReturn(new UserDataDTO(true,
+                    new UserDataDTO.UserDTO(2, "john", "John Doe", "j@b.com", "pic.jpg")));
+
+            ApiResponseDTO<List<NotificationResponseDTO>> resp =
+                    notificationService.getByRecipient(5, null);
+            assertThat(resp.getData().get(0).getActorUsername()).isEqualTo("john");
+            assertThat(resp.getData().get(0).getActorProfilePic()).isEqualTo("pic.jpg");
+            assertThat(resp.getData().get(0).getMessage()).contains("John Doe");
+        }
+
+        @Test
+        @DisplayName("Should use username when fullName is null during enrichment")
+        void shouldUseUsernameWhenFullNameNull() {
+            Notification n = buildNotification(1, 5, 2, NotificationType.LIKE, false);
+            n.setMessage("Someone liked your post");
+            when(notificationRepository.findByRecipientIdOrderByCreatedAtDesc(5))
+                    .thenReturn(List.of(n));
+            when(authClient.getUserById(2)).thenReturn(new UserDataDTO(true,
+                    new UserDataDTO.UserDTO(2, "john", null, "j@b.com", null)));
+
+            ApiResponseDTO<List<NotificationResponseDTO>> resp =
+                    notificationService.getByRecipient(5, null);
+            assertThat(resp.getData().get(0).getMessage()).contains("john");
+        }
+
+        @Test
+        @DisplayName("Should handle AuthClient failure during enrichment")
+        void shouldHandleEnrichmentFailure() {
+            Notification n = buildNotification(1, 5, 2, NotificationType.LIKE, false);
+            when(notificationRepository.findByRecipientIdOrderByCreatedAtDesc(5))
+                    .thenReturn(List.of(n));
+            when(authClient.getUserById(2)).thenThrow(new RuntimeException("Feign down"));
+
+            ApiResponseDTO<List<NotificationResponseDTO>> resp =
+                    notificationService.getByRecipient(5, null);
+            assertThat(resp.isSuccess()).isTrue();
+        }
+
+        @Test
+        @DisplayName("Should skip enrichment for actorId 0 (system)")
+        void shouldSkipEnrichmentForSystemActor() {
+            Notification n = buildNotification(1, 5, 0, NotificationType.SYSTEM, false);
+            when(notificationRepository.findByRecipientIdOrderByCreatedAtDesc(5))
+                    .thenReturn(List.of(n));
+
+            ApiResponseDTO<List<NotificationResponseDTO>> resp =
+                    notificationService.getByRecipient(5, null);
+            assertThat(resp.isSuccess()).isTrue();
+            assertThat(resp.getData().get(0).getActorUsername()).isEqualTo("ConnectSphere");
         }
     }
 }
