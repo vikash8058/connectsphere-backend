@@ -29,6 +29,9 @@ networks:
 volumes:
   mysql-data:
   rabbitmq-data:
+  sonar-data:
+  sonar-extensions:
+  sonar-logs:
 
 services:
 
@@ -72,6 +75,19 @@ services:
       timeout: 30s
       retries: 10
       start_period: 60s
+
+  sonarqube:
+    image: sonarqube:community
+    container_name: connectsphere-sonar
+    restart: unless-stopped
+    ports:
+      - "9001:9000"
+    networks:
+      - connectsphere-net
+    volumes:
+      - sonar-data:/opt/sonarqube/data
+      - sonar-extensions:/opt/sonarqube/extensions
+      - sonar-logs:/opt/sonarqube/logs
 
   eureka-server:
     build:

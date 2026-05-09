@@ -37,14 +37,27 @@ class IndexPostEventMessageTest {
 
     @Test
     void testEqualsAndHashCode_Complex() {
-        IndexPostEventMessage msg1 = IndexPostEventMessage.builder().postId(1).build();
-        IndexPostEventMessage msg2 = IndexPostEventMessage.builder().postId(1).build();
-        IndexPostEventMessage msg3 = IndexPostEventMessage.builder().postId(2).build();
+        IndexPostEventMessage msg1 = IndexPostEventMessage.builder().postId(1).eventType("A").build();
+        IndexPostEventMessage msg2 = IndexPostEventMessage.builder().postId(1).eventType("A").build();
+        IndexPostEventMessage msg3 = IndexPostEventMessage.builder().postId(2).eventType("A").build();
+        IndexPostEventMessage msg4 = IndexPostEventMessage.builder().postId(1).eventType("B").build();
+        IndexPostEventMessage msgNull = IndexPostEventMessage.builder().build();
+        IndexPostEventMessage msgNull2 = IndexPostEventMessage.builder().build();
 
-        assertEquals(msg1, msg2);
-        assertNotEquals(msg3, msg1);
+        // Equality checks
+        assertEquals(msg1, msg1); // Same instance
+        assertEquals(msg1, msg2); // Same values
+        assertNotEquals(msg3, msg1); // Different postId
+        assertNotEquals(msg4, msg1); // Different eventType
         assertNotEquals(null, msg1);
-        assertNotEquals("not a message", msg1);
+        assertNotEquals(new Object(), msg1);
+        assertEquals(msgNull, msgNull2);
+
+        // HashCode checks
         assertEquals(msg1.hashCode(), msg2.hashCode());
+        assertNotEquals(msg1.hashCode(), msg3.hashCode());
+        
+        // Coverage for all fields in toString
+        assertNotNull(msg1.toString());
     }
 }

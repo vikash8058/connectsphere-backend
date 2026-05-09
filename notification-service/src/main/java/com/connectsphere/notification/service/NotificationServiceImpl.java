@@ -116,7 +116,8 @@ public class NotificationServiceImpl implements NotificationService {
         // ── SEND EMAIL only for HIGH-PRIORITY events ──
         // Per spec: email alerts for account actions & follower milestones ONLY.
         // LIKE / COMMENT / REPLY / MENTION → in-app notification only (no email).
-        // FOLLOW → in-app only for regular follows; email on milestone (handled separately).
+        // FOLLOW → in-app only for regular follows; email on milestone (handled
+        // separately).
         if (recipientEmail != null && isHighPriorityEmailEvent(request.getType(), request.getRecipientId())) {
             sendEmailAlertAsync(recipientEmail, request.getType(), finalMessage);
         }
@@ -141,7 +142,7 @@ public class NotificationServiceImpl implements NotificationService {
         List<Notification> notifications = request.getRecipientIds().stream()
                 .map(recipientId -> Notification.builder()
                         .recipientId(recipientId)
-                        .actorId(0)   // 0 = system actor (platform broadcast)
+                        .actorId(0) // 0 = system actor (platform broadcast)
                         .type(NotificationType.valueOf(request.getType()))
                         .message(request.getMessage())
                         .targetId(null)
@@ -160,7 +161,8 @@ public class NotificationServiceImpl implements NotificationService {
                 try {
                     UserDataDTO userRes = authClient.getUserById(rid);
                     if (userRes != null && userRes.getData() != null && userRes.getData().getEmail() != null) {
-                        sendEmailAlertAsync(userRes.getData().getEmail(), NotificationType.SYSTEM, request.getMessage());
+                        sendEmailAlertAsync(userRes.getData().getEmail(), NotificationType.SYSTEM,
+                                request.getMessage());
                     }
                 } catch (Exception e) {
                     log.error("Failed to send broadcast email to user {}: {}", rid, e.getMessage());
@@ -242,7 +244,8 @@ public class NotificationServiceImpl implements NotificationService {
      * by calling auth-service for each unique actor ID.
      */
     private void enrichWithActorInfo(List<NotificationResponseDTO> dtos) {
-        if (dtos == null || dtos.isEmpty()) return;
+        if (dtos == null || dtos.isEmpty())
+            return;
 
         java.util.Set<Integer> actorIds = dtos.stream()
                 .map(NotificationResponseDTO::getActorId)
@@ -266,7 +269,7 @@ public class NotificationServiceImpl implements NotificationService {
             if (actor != null) {
                 dto.setActorUsername(actor.getUsername());
                 dto.setActorProfilePic(actor.getProfilePicUrl());
-                
+
                 // If the message is generic "Someone ...", update it with real name
                 if (dto.getMessage() != null && dto.getMessage().startsWith("Someone")) {
                     String realName = actor.getFullName() != null ? actor.getFullName() : actor.getUsername();
@@ -290,8 +293,8 @@ public class NotificationServiceImpl implements NotificationService {
     @Override
     @Transactional
     public ApiResponseDTO<String> deleteNotification(Integer notificationId,
-                                                     Integer requestingUserId,
-                                                     String requestingUserRole) {
+            Integer requestingUserId,
+            String requestingUserRole) {
         log.info("Delete notification: id={} userId={}", notificationId, requestingUserId);
 
         Notification notification = notificationRepository
@@ -371,23 +374,27 @@ public class NotificationServiceImpl implements NotificationService {
                 .targetType(n.getTargetType())
                 .deepLinkUrl(n.getDeepLinkUrl())
                 .isRead(n.getIsRead())
-                .actorUsername(n.getActorId() == 0 ? "ConnectSphere" : "Someone") // ConnectSphere for system notifications
+                .actorUsername(n.getActorId() == 0 ? "ConnectSphere" : "Someone") // ConnectSphere for system
+                                                                                  // notifications
                 .createdAt(n.getCreatedAt())
                 .build();
     }
 
-    // ── PRIVATE HELPER: Determine if an email alert should be sent for this notification type ──
+    // ── PRIVATE HELPER: Determine if an email alert should be sent for this
+    // notification type ──
     private boolean isHighPriorityEmailEvent(NotificationType type, Integer recipientId) {
         return switch (type) {
             case LIKE, COMMENT, REPLY, MENTION -> false;
             case FOLLOW -> isFollowerMilestone(recipientId); // Only email on milestones
-            case SYSTEM, PAYMENT_SUCCESS, SUBSCRIPTION_EXPIRY -> true; 
+            case SYSTEM, PAYMENT_SUCCESS, SUBSCRIPTION_EXPIRY -> true;
         };
     }
 
-    // ── PRIVATE HELPER: Check if a FOLLOW notification is a milestone (100, 500, 1000 followers) ──
+    // ── PRIVATE HELPER: Check if a FOLLOW notification is a milestone (100, 500,
+    // 1000 followers) ──
     private boolean isFollowerMilestone(Integer recipientId) {
-        if (recipientId == null) return false;
+        if (recipientId == null)
+            return false;
         try {
             long followerCount = notificationRepository
                     .countByRecipientIdAndType(recipientId, NotificationType.FOLLOW);
@@ -401,7 +408,8 @@ public class NotificationServiceImpl implements NotificationService {
         }
     }
 
-    // ── PRIVATE HELPER: Build a user-friendly message based on actor's name and notification type ──
+    // ── PRIVATE HELPER: Build a user-friendly message based on actor's name and
+    // notification type ──
     private String buildMessage(String actorName, NotificationType type, String fallbackMessage) {
         // If calling service already sent a meaningful message, use it
         // Replace "Someone" with the real name if present
@@ -411,12 +419,12 @@ public class NotificationServiceImpl implements NotificationService {
         }
 
         return switch (type) {
-            case LIKE    -> actorName + " liked your post";
+            case LIKE -> actorName + " liked your post";
             case COMMENT -> actorName + " commented on your post";
-            case REPLY   -> actorName + " replied to your comment";
-            case FOLLOW  -> actorName + " started following you";
+            case REPLY -> actorName + " replied to your comment";
+            case FOLLOW -> actorName + " started following you";
             case MENTION -> actorName + " mentioned you in a post";
-            case SYSTEM  -> actorName + " sent a system broadcast";
+            case SYSTEM -> actorName + " sent a system broadcast";
             case PAYMENT_SUCCESS -> "Elite Status Activated! Welcome to the premium club.";
             case SUBSCRIPTION_EXPIRY -> "Your Elite Status has expired. Renew now to keep your badge!";
         };
@@ -430,11 +438,11 @@ public class NotificationServiceImpl implements NotificationService {
     protected void sendEmailAlertAsync(String toEmail, NotificationType type, String message) {
         try {
             String subject = switch (type) {
-                case SYSTEM  -> "🔔 System Announcement — ConnectSphere";
-                case FOLLOW  -> "🎉 Milestone reached! You have a new follower — ConnectSphere";
-                case LIKE    -> "Someone liked your post on ConnectSphere";
+                case SYSTEM -> "🔔 System Announcement — ConnectSphere";
+                case FOLLOW -> "🎉 Milestone reached! You have a new follower — ConnectSphere";
+                case LIKE -> "Someone liked your post on ConnectSphere";
                 case COMMENT -> "New comment on your post — ConnectSphere";
-                case REPLY   -> "Someone replied to your comment — ConnectSphere";
+                case REPLY -> "Someone replied to your comment — ConnectSphere";
                 case MENTION -> "You were mentioned on ConnectSphere";
                 case PAYMENT_SUCCESS -> "💳 Payment Successful — Welcome to ConnectSphere Elite!";
                 case SUBSCRIPTION_EXPIRY -> "⚠️ Subscription Expired — ConnectSphere Elite";
