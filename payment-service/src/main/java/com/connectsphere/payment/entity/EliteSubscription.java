@@ -32,6 +32,6 @@ public class EliteSubscription {
     private String planType;
 
     public boolean isCurrentlyActive() {
-        return isActive && endDate.isAfter(LocalDateTime.now());
+        return isActive != null && isActive && endDate != null && endDate.isAfter(LocalDateTime.now());
     }
 }
