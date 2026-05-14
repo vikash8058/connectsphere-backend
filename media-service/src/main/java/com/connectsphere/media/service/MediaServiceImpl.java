@@ -29,6 +29,7 @@ public class MediaServiceImpl implements MediaService {
     private final com.connectsphere.media.client.FollowServiceClient followServiceClient;
     private final com.connectsphere.media.repository.StoryViewRepository storyViewRepository;
     private final com.connectsphere.media.client.AuthServiceClient authServiceClient;
+    private final StorageService storageService;
 
     @Value("${media.cdn-base-url}")
     private String cdnBaseUrl;
@@ -44,9 +45,6 @@ public class MediaServiceImpl implements MediaService {
 
     @Value("${media.allowed-video-types}")
     private String allowedVideoTypes;
-
-    @Value("${media.storage-base-path}")
-    private String storageBasePath;
 
     // ─── MEDIA OPERATIONS ────
 
@@ -82,21 +80,14 @@ public class MediaServiceImpl implements MediaService {
         // 1. Generate unique filename
         String fileName = generateUniqueFileName(file.getOriginalFilename(), mimeType);
         
-        // 2. Save file to local storage (simulating CDN upload)
+        // 2. Save file using storage service
+        String cdnUrl;
         try {
-            java.nio.file.Path uploadPath = java.nio.file.Paths.get(storageBasePath);
-            if (!java.nio.file.Files.exists(uploadPath)) {
-                java.nio.file.Files.createDirectories(uploadPath);
-            }
-            java.nio.file.Files.copy(file.getInputStream(), uploadPath.resolve(fileName), java.nio.file.StandardCopyOption.REPLACE_EXISTING);
-            log.info("File saved to storage: {}/{}", storageBasePath, fileName);
+            cdnUrl = storageService.store(file.getInputStream(), fileName, mimeType);
         } catch (java.io.IOException e) {
-            log.error("Failed to save file: {}", e.getMessage());
-            throw new RuntimeException("Could not store file. Please try again.");
+            log.error("Failed to read upload stream: {}", e.getMessage());
+            throw new RuntimeException("Could not read uploaded file.");
         }
-
-        // 3. Build URL for the saved file
-        String cdnUrl = buildCdnUrl(fileName);
 
         // Persist Media entity
         Media media = Media.builder()

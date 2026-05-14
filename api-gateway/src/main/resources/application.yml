@@ -141,8 +141,7 @@ spring:
               - "http://localhost:3000"
               - "http://localhost:8090"
               - "http://localhost:5173"
-              - "https://connectshpere-frontend.vercel.app"
-              - "https://smokiness-grimy-mumps.ngrok-free.dev" 
+              - "https://connectsphere-frontend.vercel.app"
 
             allowedMethods:
               - GET
