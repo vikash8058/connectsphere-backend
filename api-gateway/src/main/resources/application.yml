@@ -13,6 +13,13 @@ spring:
 
       # ROUTES
       routes:
+        # ── OAUTH2 ROOT PATHS (Safety Rewrite for Frontend) ──
+        - id: auth-service-oauth2-root
+          uri: http://auth-service:8081
+          predicates:
+            - Path=/oauth2/**,/login/**
+          filters:
+            - RewritePath=/(?<segment>.*), /api/v1/${segment}
 
         # ── AUTH SERVICE (PUBLIC) ──
         - id: auth-service-public
@@ -30,6 +37,7 @@ spring:
                    /api/v1/auth/oauth2/**,
                    /api/v1/oauth2/**,
                    /api/v1/login/oauth2/**
+
 
         # ── AUTH SERVICE (PROTECTED) ───
         - id: auth-service-protected
