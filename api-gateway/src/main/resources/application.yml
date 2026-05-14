@@ -18,17 +18,7 @@ spring:
         - id: auth-service-public
           uri: lb://auth-service
           predicates:
-            - Path=/api/v1/auth/register,
-                   /api/v1/auth/login,
-                   /api/v1/auth/verify-otp,
-                   /api/v1/auth/refresh,
-                   /api/v1/auth/forgot-password,
-                   /api/v1/auth/reset-password,
-                   /api/v1/auth/search,
-                   /api/v1/auth/users/**,
-                   /api/v1/auth/oauth2/**,
-                   /api/v1/oauth2/**,
-                   /api/v1/login/oauth2/**
+            - Path=/api/v1/auth/register,/api/v1/auth/login,/api/v1/auth/verify-otp,/api/v1/auth/refresh,/api/v1/auth/forgot-password,/api/v1/auth/reset-password,/api/v1/auth/search,/api/v1/auth/users/**,/api/v1/auth/oauth2/**,/api/v1/oauth2/**,/api/v1/login/oauth2/**
 
         # ── AUTH SERVICE (PROTECTED) ───
         - id: auth-service-protected
@@ -42,10 +32,7 @@ spring:
         - id: post-service-public
           uri: lb://post-service
           predicates:
-            - Path=/api/v1/posts/public/**,
-                   /api/v1/posts/user/**,
-                   /api/v1/posts/count/**,
-                   /api/v1/posts/search
+            - Path=/api/v1/posts/public/**,/api/v1/posts/user/**,/api/v1/posts/count/**,/api/v1/posts/search
 
         - id: post-service-protected
           uri: lb://post-service
@@ -76,13 +63,7 @@ spring:
         - id: follow-service-public
           uri: lb://follow-service
           predicates:
-            - Path=/api/v1/follows/*/followers,
-              /api/v1/follows/*/following,
-              /api/v1/follows/*/follower-count,
-              /api/v1/follows/*/following-count,
-              /api/v1/follows/*/counts,
-              /api/v1/follows/*/mutual,
-              /api/v1/follows/*/followee-ids
+            - Path=/api/v1/follows/*/followers,/api/v1/follows/*/following,/api/v1/follows/*/follower-count,/api/v1/follows/*/following-count,/api/v1/follows/*/counts,/api/v1/follows/*/mutual,/api/v1/follows/*/followee-ids
 
         # PROTECTED — follow/unfollow/check/suggestions require JWT (case study 2.3)
         - id: follow-service-protected
@@ -104,14 +85,12 @@ spring:
         - id: media-service-public
           uri: lb://media-service
           predicates:
-            - Path=/api/v1/stories/public/**,
-                   /api/v1/media/cdn/**
+            - Path=/api/v1/stories/public/**,/api/v1/media/cdn/**
 
         - id: media-service-protected
           uri: lb://media-service
           predicates:
-            - Path=/api/v1/media/**,
-                   /api/v1/stories/**
+            - Path=/api/v1/media/**,/api/v1/stories/**
           filters:
             - JwtAuthenticationFilter
 
@@ -119,8 +98,7 @@ spring:
         - id: search-service
           uri: lb://search-service
           predicates:
-            - Path=/api/v1/search/**,
-                   /api/v1/hashtags/**
+            - Path=/api/v1/search/**,/api/v1/hashtags/**
 
         # ── PAYMENT SERVICE ────
         - id: payment-service
@@ -131,27 +109,19 @@ spring:
             - JwtAuthenticationFilter
 
    
-      # GLOBAL CORS
+      # GLOBAL CORS CONFIGURATION
+      # Centralized here to handle all microservices. 
+      # Note: For ngrok, ensure you've bypassed the landing page once in your browser.
    
       globalcors:
         cors-configurations:
           '[/**]':
-            allowedOrigins:
-              - "http://localhost:3000"
-              - "http://localhost:8090"
-              - "http://localhost:5173"
-              - "https://connectshpere-frontend.vercel.app"
-              - "https://smokiness-grimy-mumps.ngrok-free.dev" 
-
+            allowedOriginPatterns:
+              - "*"
             allowedMethods:
-              - GET
-              - POST
-              - PUT
-              - DELETE
-              - OPTIONS
-              - PATCH
-
-            allowedHeaders: "*"
+              - "*"
+            allowedHeaders:
+              - "*"
             exposedHeaders:
               - "Authorization"
             allowCredentials: true
