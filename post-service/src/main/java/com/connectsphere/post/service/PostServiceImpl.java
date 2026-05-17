@@ -85,6 +85,7 @@ public class PostServiceImpl implements PostService {
         Post post = postRepository.findByPostIdAndIsDeletedFalse(postId).orElseThrow(() -> new PostNotFoundException("Post not found with ID: " + postId));
         if (!post.getAuthorId().equals(requestingUserId)) throw new UnauthorizedActionException("You are not authorized to perform this action");
         if (request.getContent() != null) post.setContent(request.getContent());
+        if (request.getVisibility() != null) post.setVisibility(request.getVisibility());
         return ApiResponseDTO.success("Post updated successfully", toDTO(postRepository.save(post)));
     }
 
