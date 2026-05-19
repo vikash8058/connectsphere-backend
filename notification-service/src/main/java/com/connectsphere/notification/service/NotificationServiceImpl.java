@@ -29,6 +29,7 @@ public class NotificationServiceImpl implements NotificationService {
     private final NotificationRepository notificationRepository;
     private final JavaMailSender mailSender;
     private final AuthClient authClient;
+    private final EmailSenderService emailSenderService;
 
     @Value("${notification.mail.from:noreply@connectsphere.com}")
     private String fromEmail;
@@ -119,7 +120,7 @@ public class NotificationServiceImpl implements NotificationService {
         // FOLLOW → in-app only for regular follows; email on milestone (handled
         // separately).
         if (recipientEmail != null && isHighPriorityEmailEvent(request.getType(), request.getRecipientId())) {
-            sendEmailAlertAsync(recipientEmail, request.getType(), finalMessage);
+            emailSenderService.sendEmailAlertAsync(recipientEmail, request.getType(), finalMessage);
         }
 
         return ApiResponseDTO.success("Notification created successfully", toDTO(saved));
@@ -161,7 +162,7 @@ public class NotificationServiceImpl implements NotificationService {
                 try {
                     UserDataDTO userRes = authClient.getUserById(rid);
                     if (userRes != null && userRes.getData() != null && userRes.getData().getEmail() != null) {
-                        sendEmailAlertAsync(userRes.getData().getEmail(), NotificationType.SYSTEM,
+                        emailSenderService.sendEmailAlertAsync(userRes.getData().getEmail(), NotificationType.SYSTEM,
                                 request.getMessage());
                     }
                 } catch (Exception e) {
@@ -430,35 +431,5 @@ public class NotificationServiceImpl implements NotificationService {
         };
     }
 
-    /**
-     * Send email alert asynchronously to the recipient.
-     * Fire-and-forget — does not block the API response.
-     */
-    @Async
-    protected void sendEmailAlertAsync(String toEmail, NotificationType type, String message) {
-        try {
-            String subject = switch (type) {
-                case SYSTEM -> "🔔 System Announcement — ConnectSphere";
-                case FOLLOW -> "🎉 Milestone reached! You have a new follower — ConnectSphere";
-                case LIKE -> "Someone liked your post on ConnectSphere";
-                case COMMENT -> "New comment on your post — ConnectSphere";
-                case REPLY -> "Someone replied to your comment — ConnectSphere";
-                case MENTION -> "You were mentioned on ConnectSphere";
-                case PAYMENT_SUCCESS -> "💳 Payment Successful — Welcome to ConnectSphere Elite!";
-                case SUBSCRIPTION_EXPIRY -> "⚠️ Subscription Expired — ConnectSphere Elite";
-            };
 
-            //
-            SimpleMailMessage mail = new SimpleMailMessage();
-            mail.setFrom(fromEmail);
-            mail.setTo(toEmail);
-            mail.setSubject(subject);
-            mail.setText(message + "\n\nOpen ConnectSphere to see more.");
-            mailSender.send(mail);
-
-            log.info("Email alert sent to: {}", toEmail);
-        } catch (Exception e) {
-            log.error("Failed to send email to {}: {}", toEmail, e.getMessage());
-        }
-    }
 }
